@@ -16,6 +16,8 @@ extern crate stm32f103xx_hal;
 
 
 use stm32f103xx_hal::prelude::*;
+use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
+use stm32f103xx_hal::gpio::gpioc::PCx;
 
 use core::fmt::Write;
 
@@ -34,22 +36,68 @@ fn main() {
     //peripherals.GPIOC.crh.write(|w| w.mode13().output()); // set C13 to outpput
     //peripherals.GPIOC.odr.write(|w| w.odr13().set_bit());
 
+    // enable output C?
+    {
+        peripherals.RCC.apb2enr.modify(|_, w| w.iopcen().enabled());
+        peripherals.RCC.apb2rstr.modify(|_, w| w.iopcrst().set_bit());
+        peripherals.RCC.apb2rstr.modify(|_, w| w.iopcrst().clear_bit());
+    }
+
+
+
+    // split GPIOC into pins
+    //apb2.enr().modify(|_, w| w.$iopxenr().enabled());
+    //apb2.rstr().modify(|_, w| w.$iopxrst().set_bit());
+    //apb2.rstr().modify(|_, w| w.$iopxrst().clear_bit());
+
+
+    // GPIOC13 into push/pull
+    peripherals.GPIOC.crh
+        .modify(|r, w| {
+            w.cnf13().push();
+            w.mode13().output();
+            w
+        });
+
+     // GPIOC14 into open drain
+    peripherals.GPIOC.crh
+        .modify(|r, w| {
+            w.cnf14().open();
+            w.mode14().output();
+            w
+        });
+
+
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
-    let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
+    // let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
-    let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
-
+    // let mut led = gpioc.pc13.into_open_drain_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
+    // let mut led = &mut led as &mut OutputPin;
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
 
+
     loop {
-        led.set_high();
-        delay.delay_ms(1_000_u16);
-        led.set_low();
-        delay.delay_ms(1_000_u16);
+        // led.set_low();
+        delay.delay_ms(25_u16);
+        peripherals.GPIOC.bsrr.write(|w|{
+            // set PC13 high
+            w.bs13().set();
+            // set PC14 high
+            w.bs14().set()
+        });
+
+        // led.set_high();
+        delay.delay_ms(25_u16);
+        peripherals.GPIOC.bsrr.write(|w|{
+            // set PC13 low
+            w.br13().reset();
+            // set PC14 low
+            w.br14().reset()
+        });
     }
 /*
 
