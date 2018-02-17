@@ -33,6 +33,11 @@ vcell = "0.1.0"
 bare-metal = "0.1.1"
 stm32f103xx = "0.8.0"
 
+
+[dependencies.onewire]
+version = "0.1.0"
+path = "../onewire"
+
 [dependencies.stm32f103xx-hal]
 version = "0.1.0"
 path = "../stm32f103xx-hal"

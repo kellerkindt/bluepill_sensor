@@ -13,16 +13,24 @@ extern crate cortex_m_semihosting;
 extern crate stm32f103xx;
 extern crate stm32f103xx_hal;
 
+extern crate onewire;
 
 
 use stm32f103xx_hal::prelude::*;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
+use stm32f103xx_hal::gpio::Output;
+use stm32f103xx_hal::gpio::OpenDrain;
 use stm32f103xx_hal::gpio::gpioc::PCx;
+use stm32f103xx_hal::delay::Delay;
+
+use stm32f103xx::GPIOC;
 
 use core::fmt::Write;
 
 use cortex_m::asm;
 use self::cortex_m_semihosting::hio;
+
+use onewire::*;
 
 
 
@@ -71,33 +79,56 @@ fn main() {
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
-    // let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
-
-    // let mut led = gpioc.pc13.into_open_drain_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
     // let mut led = &mut led as &mut OutputPin;
+
+    let mut speed = 500_u16;
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
 
+    {
+        let output = OpenDrainOutputWithDelay {
+            output: &mut peripherals.GPIOC,
+            delay: &mut delay
+        };
+
+        let mut wire = OneWire::new(output, false);
+        for _ in 0..16 {
+            let result = wire.reset();
+            if let Ok(ref result) = result {
+                if *result {
+                    speed = 25_u16;
+                }
+            }
+            stdout(|out| writeln!(out, "reset: {:?}", result));
+        }
+    }
+
+    let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
+
+    let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
+    let mut one : PCx<Output<OpenDrain>> = gpioc.pc14.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
     loop {
-        // led.set_low();
-        delay.delay_ms(25_u16);
-        peripherals.GPIOC.bsrr.write(|w|{
+        led.set_low();
+        one.set_low();
+        delay.delay_ms(speed);
+        /*peripherals.GPIOC.bsrr.write(|w|{
             // set PC13 high
             w.bs13().set();
             // set PC14 high
             w.bs14().set()
-        });
+        });*/
 
-        // led.set_high();
-        delay.delay_ms(25_u16);
-        peripherals.GPIOC.bsrr.write(|w|{
+        led.set_high();
+        one.set_high();
+        delay.delay_ms(speed);
+        /*peripherals.GPIOC.bsrr.write(|w|{
             // set PC13 low
             w.br13().reset();
             // set PC14 low
             w.br14().reset()
-        });
+        });*/
     }
 /*
 
@@ -123,6 +154,35 @@ fn main() {
             writeln!(stdout, "");
         }
     }*/
+}
+
+pub struct OpenDrainOutputWithDelay<'a> {
+    output: &'a mut GPIOC,
+    delay: &'a mut Delay
+}
+
+impl<'a> OpenDrainOutput for OpenDrainOutputWithDelay<'a> {
+    fn drain_low(&mut self) {
+        self.output.bsrr.write(|w|{
+            // set PC14 high
+            w.br14().reset()
+        });
+    }
+
+    fn float_high(&mut self) {
+        self.output.bsrr.write(|w|{
+            // set PC14 high
+            w.bs14().set()
+        });
+    }
+
+    fn is_high(&self) -> bool {
+        self.output.idr.read().idr14().bit_is_set()
+    }
+
+    fn delay_us(&mut self, us: u8) {
+        self.delay.delay_us(us)
+    }
 }
 
 #[cfg(debug_assertions)]
