@@ -86,29 +86,28 @@ fn main() {
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
 
-    {
-        let output = OpenDrainOutputWithDelay {
-            output: &mut peripherals.GPIOC,
-            delay: &mut delay
-        };
-
-        let mut wire = OneWire::new(output, false);
-        for _ in 0..16 {
-            let result = wire.reset();
-            if let Ok(ref result) = result {
-                if *result {
-                    speed = 25_u16;
-                }
-            }
-            stdout(|out| writeln!(out, "reset: {:?}", result));
-        }
-    }
-
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
     let mut one : PCx<Output<OpenDrain>> = gpioc.pc14.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
+
+    {
+        let mut wire = OneWire::new(&mut one, false);
+        for _ in 0..16 {
+            let result = wire.reset(&mut delay);
+            stdout(|out| writeln!(out, "reset: {:?}", result));
+            if let Ok(ref result) = result {
+                if *result {
+                    speed = 25_u16;
+                }
+            } else {
+                loop {
+
+                }
+            }
+        }
+    }
     loop {
         led.set_low();
         one.set_low();
@@ -154,35 +153,6 @@ fn main() {
             writeln!(stdout, "");
         }
     }*/
-}
-
-pub struct OpenDrainOutputWithDelay<'a> {
-    output: &'a mut GPIOC,
-    delay: &'a mut Delay
-}
-
-impl<'a> OpenDrainOutput for OpenDrainOutputWithDelay<'a> {
-    fn drain_low(&mut self) {
-        self.output.bsrr.write(|w|{
-            // set PC14 high
-            w.br14().reset()
-        });
-    }
-
-    fn float_high(&mut self) {
-        self.output.bsrr.write(|w|{
-            // set PC14 high
-            w.bs14().set()
-        });
-    }
-
-    fn is_high(&self) -> bool {
-        self.output.idr.read().idr14().bit_is_set()
-    }
-
-    fn delay_us(&mut self, us: u8) {
-        self.delay.delay_us(us)
-    }
 }
 
 #[cfg(debug_assertions)]
