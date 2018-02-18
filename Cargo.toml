@@ -35,8 +35,12 @@ stm32f103xx = "0.8.0"
 
 
 [dependencies.onewire]
-version = "^0.2.0"
+version = "^0.2.1"
 path = "../onewire"
+
+[dependencies.pcd8544]
+version = "0.1.1"
+path = "../pcd8544"
 
 [dependencies.stm32f103xx-hal]
 version = "0.1.0"

@@ -35,4 +35,7 @@ rustflags = [
 ]
 
 [build]
-target = "thumbv7em-none-eabihf"
+# Cortex M4 family
+# target = "thumbv7em-none-eabihf"
+# Cortex M3 family
+target = "thumbv7m-none-eabi"

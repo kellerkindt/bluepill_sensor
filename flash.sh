@@ -1,6 +1,7 @@
 #!/bin/bash
 
 unset CARGO_INCREMENTAL
+BIN="target/thumbv7m-none-eabi/release/hebeanlage"
 
 rustup run nightly xargo build --release \
  && sudo openocd \
@@ -9,7 +10,7 @@ rustup run nightly xargo build --release \
 	-c init \
 	-c targets \
 	-c "halt" \
-	-c "flash write_image erase target/thumbv7em-none-eabihf/release/hebeanlage" \
-	-c "verify_image target/thumbv7em-none-eabihf/release/hebeanlage" \
+	-c "flash write_image erase $BIN" \
+	-c "verify_image $BIN" \
 	-c "reset run" \
 	-c shutdown
