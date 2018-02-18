@@ -14,6 +14,8 @@ extern crate cortex_m_semihosting;
 extern crate stm32f103xx;
 extern crate stm32f103xx_hal;
 
+extern crate byteorder;
+
 extern crate onewire;
 extern crate pcd8544;
 
@@ -151,19 +153,44 @@ fn lolz(probe0: *mut u8) {
         }
         display.set_light(true);
         display.clear();
-        writeln!(display, "Search: ");
+        writeln!(display, "TmpSensorAddr");
         let mut search = OneWireDeviceSearch::new();
-        match wire.search_next(&mut search, &mut delay) {
+        let addr = match wire.search_next(&mut search, &mut delay) {
             Err(e) => {
-                write!(display, "{:?}", e);
+                write!(display, "E: {:?}", e);
+                None
             },
             Ok(addr) => {
-                if let Some(addr) = addr {
-                    write!(display, "# {}", addr);
+                if let Some(ref addr) = addr {
+                    writeln!(display, "{}", addr);
                 } else {
-                    write!(display, "None");
+                    writeln!(display, "None");
                 }
+                addr
             }
+        };
+        if let Some(ref device) = addr {
+            let ds18b20 = DS18B20::new(device.clone());
+            let _measure_resolution = ds18b20.measure_temperature(&mut wire, &mut delay);
+/*
+            match _measure_resolution {
+                Err(e) => {},
+                Ok(res)=> delay.delay_ms(res.time_ms())
+            };
+*/
+            let temp = ds18b20.read_temperature(&mut wire, &mut delay);
+
+            writeln!(display);
+            match temp {
+                Ok(temp) => write!(display, " {:.1}°C", temp),
+                Err(err) => write!(display, "E: {:?}", e)
+            };
+            //write!(display, " {:.1}°C 0x{:02x}{:02x}", tempf32, content[0], content[1]);
+            //write!(display, " {:}  °C 0x{:02x}{:02x}", temp as i16 / 16_i16, content[0], content[1]);
+            /*for b in content.iter() {
+                write!(display, "{:02x} ", b);
+            }*/
+            delay.delay_ms(1_500_u16);
         }
     }
 }

@@ -32,14 +32,14 @@ debug = false
 vcell = "0.1.0"
 bare-metal = "0.1.1"
 stm32f103xx = "0.8.0"
-
+byteorder = { version = "1", default-features = false }
 
 [dependencies.onewire]
-version = "^0.2.1"
+version = "^0.3.1"
 path = "../onewire"
 
 [dependencies.pcd8544]
-version = "0.1.1"
+version = "0.1.2"
 path = "../pcd8544"
 
 [dependencies.stm32f103xx-hal]
