@@ -20,6 +20,7 @@ extern crate byteorder;
 extern crate onewire;
 extern crate pcd8544;
 extern crate enc28j60;
+extern crate w5500;
 
 use stm32f103xx_hal::prelude::*;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
@@ -45,7 +46,10 @@ use self::cortex_m_semihosting::hio;
 use onewire::*;
 use pcd8544::*;
 use enc28j60::*;
+use w5500::*;
 
+use byteorder::ByteOrder;
+use byteorder::LittleEndian;
 
 
 #[cfg(debug_assertions)]
@@ -145,6 +149,7 @@ fn main() {
     rs.set_low();
     delay.delay_ms(100_u16);
     rs.set_high();
+    delay.delay_ms(100_u16);
 
 
     let mut spi = Spi::spi1(
@@ -161,9 +166,11 @@ fn main() {
     );
 
 
-    let mut enc = ENC28J60::new(spi, cs);
+    // let mut enc = ENC28J60::new(spi, cs);
+    // enc.init().unwrap();
 
-    enc.init().unwrap();
+    let mut w5500 = W5500::new(spi, cs).unwrap();
+
     loop {
         led.set_low();
         delay.delay_ms(speed);
@@ -216,8 +223,48 @@ fn main() {
 
                 writeln!(display);
                 match temp {
-                    Ok(temp) => writeln!(display, " {:.1}°C", temp),
-                    Err(err) => writeln!(display, "E: {:?}", err)
+                    Ok(temp) => {
+                        writeln!(display, " {:.1}°C", temp);
+
+                        w5500.write_to(
+                            Register::Socket0Register(0x00_00),
+                            &[
+                                0b0000_0010, // UDP
+                                0x01 // OPEN / initialize
+                            ]
+                        );
+                        w5500.write_to(
+                            Register::Socket0Register(0x00_22),
+                            &[
+                                0x00, 0x00,
+                                0x00, 0x04, // 3 bytes
+                            ]
+                        );
+
+                        let mut buffer = [0u8; 4];
+                        LittleEndian::write_f32(&mut buffer, temp);
+
+                        w5500.write_to(
+                            Register::Socket0TxBuffer(0x00_00),
+                            &buffer
+                        );
+
+                        let mut ip = [0u8; 4];
+                        match w5500.read_from(Register::Socket0Register(0x00_22), &mut ip) {
+                            Err(_) => writeln!(display, "Failed to read"),
+                            Ok(_) => writeln!(display, "{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
+                        };
+
+                        w5500.write_to(
+                            Register::Socket0Register(0x00_01),
+                            &[
+                                0x20 // SEND
+                            ]
+                        );
+                    },
+                    Err(err) => {
+                        writeln!(display, "E: {:?}", err);
+                    }
                 };
                 //write!(display, " {:.1}°C 0x{:02x}{:02x}", tempf32, content[0], content[1]);
                 //write!(display, " {:}  °C 0x{:02x}{:02x}", temp as i16 / 16_i16, content[0], content[1]);
@@ -229,6 +276,7 @@ fn main() {
                 writeln!(display, "family code mismatch");
             }
         }
+        /*
         if let Err(e) = enc.reset() {
             writeln!(display, "1 {:?}", e);
         } else {
@@ -265,7 +313,7 @@ fn main() {
                     }
                 };*/
             }
-        }
+        }*/
     }
 }
 
