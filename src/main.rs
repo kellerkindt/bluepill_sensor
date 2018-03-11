@@ -19,7 +19,6 @@ extern crate byteorder;
 
 extern crate onewire;
 extern crate pcd8544;
-extern crate enc28j60;
 extern crate w5500;
 extern crate sensor_common;
 
@@ -48,7 +47,6 @@ use self::cortex_m_semihosting::hio;
 
 use onewire::*;
 use pcd8544::*;
-use enc28j60::*;
 use w5500::*;
 use sensor_common::*;
 
@@ -169,9 +167,6 @@ fn main() {
         &mut rcc.apb2,
     );
 
-
-    // let mut enc = ENC28J60::new(spi, cs);
-    // enc.init().unwrap();
 
     let mut w5500 = W5500::new(spi, cs).unwrap();
     let _ = w5500.listen_udp(Socket::Socket1, 51);

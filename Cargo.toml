@@ -36,9 +36,6 @@ stm32f103xx = "0.8.0"
 byteorder = { version = "1.2.1", default-features = false }
 nb = "0.1.1"
 
-[dependencies.enc28j60]
-version = "*"
-path = "../enc28j60"
 
 [dependencies.w5500]
 version = "0.1.0"
