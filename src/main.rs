@@ -29,12 +29,14 @@ use stm32f103xx_hal::gpio::Output;
 use stm32f103xx_hal::gpio::OpenDrain;
 use stm32f103xx_hal::gpio::gpioc::PCx;
 use stm32f103xx_hal::delay::Delay;
+
+use stm32f103xx_hal::spi;
 use stm32f103xx_hal::spi::Spi;
 
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
-use embedded_hal::blocking::spi;
+use embedded_hal::spi::FullDuplex;
 
 use stm32f103xx::GPIOC;
 
@@ -88,6 +90,7 @@ fn main() {
 
     let mut speed = 500_u16;
 
+    // rcc.cfgr = rcc.cfgr.sysclk(stm32f103xx_hal::time::Hertz(7_200_000_u32));
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
 
@@ -172,6 +175,39 @@ fn main() {
 
     let mut w5500 = W5500::new(spi, cs).unwrap();
     let _ = w5500.listen_udp(Socket::Socket1, 51);
+
+    let mut wire = OneWire::new(&mut one, false);
+    let _ = wire.reset(&mut delay);
+
+    let mut tick = 0_u64;
+
+    display.set_light(true);
+    loop {
+        if led.is_low() {
+            led.set_high();
+        } else {
+            led.set_low();
+        }
+
+        let _ = wire.reset(&mut delay);
+        display.clear();
+        writeln!(display, "{}", tick);
+
+        match handle_udp_requests(&mut wire, &mut delay, &mut w5500, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
+            Err(e) => {
+                writeln!(display, "Error:");
+                writeln!(display, "{:?}", e);
+                delay.delay_ms(2_000_u16);
+            },
+            Ok(address) => if let Some((ip, port)) = address {
+                writeln!(display, "Fine:");
+                writeln!(display, "{}:{}", ip, port);
+            }
+        };
+
+        // delay.delay_ms(100_u16);
+        tick += 1;
+    }
 
     loop {
         led.set_low();
@@ -268,6 +304,7 @@ fn main() {
                                                         &buffer[..size],
                                                     );
                                                 }
+                                                // let _ = w5500.listen_udp(Socket::Socket1, 51);
                                             },
 
                                             Request::ReadAllOnBus(id, _) | Request::ReadSingle(id) | Request::ReadAll(id) |Request::DiscoverAll(id) |Request::DiscoverAllOnBus(id, _) => {
@@ -367,6 +404,114 @@ fn main() {
         }*/
     }
 }
+
+fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputPin>(wire: &mut OneWire, delay: &mut Delay, w5500: &mut W5500<spi::Error, S , O>, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+    if let Some((ip, port, size)) = w5500.try_receive_udp(socket_rcv, buffer)? {
+        let (request, response) = buffer.split_at_mut(size);
+
+        let response_size = {
+            let reader = &mut &*request as &mut Read;
+            let writer = &mut &mut *response as &mut ::sensor_common::Write;
+
+            let available = writer.available();
+
+            let request = Request::read(reader)?;
+            let id = request.id();
+
+             match request {
+                Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
+                    Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
+                    transmit_all_on_one_wire(wire, delay, writer)?;
+                },
+
+                _ => {
+                    Response::NotImplemented(id).write(writer)?;
+                }
+            };
+
+            available - writer.available()
+        };
+
+        w5500.send_udp(
+            socket_send,
+            50,
+            &ip,
+            port,
+            &response[..response_size]
+        )?;
+        Ok(Some((ip, port)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+    let mut search = OneWireDeviceSearch::new();
+    while writer.available() >= 12 {
+        wire.reset(delay)?;
+        if let Ok(device) = wire.search_next(&mut search, delay) {
+            if let Some(device) = device {
+                let value = measure(wire, &device, delay)?;
+
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(&mut buffer[..], value);
+
+                writer.write_all(&device.address)?;
+                writer.write_all(&buffer)?;
+
+                // TODO
+                return Ok(());
+
+            } else {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+fn measure(wire: &mut OneWire, device: &OneWireDevice, delay: &mut Delay) -> Result<f32, HandleError> {
+    if let Ok(ds18b20) = DS18B20::new(device.clone()) {
+        let measure_resolution = ds18b20.measure_temperature(wire, delay)?;
+        if measure_resolution.time_ms() > 0 {
+            delay.delay_ms(measure_resolution.time_ms());
+        }
+        return Ok(ds18b20.read_temperature(wire, delay)?);
+    }
+
+    // else if ...
+
+    Err(HandleError::Unavailable)
+}
+
+#[derive(Debug)]
+enum HandleError {
+    Spi(spi::Error),
+    Parsing(sensor_common::Error),
+    OneWire(onewire::OneWireError),
+    Unavailable
+}
+
+impl From<spi::Error> for HandleError {
+    fn from(e: spi::Error) -> Self {
+        HandleError::Spi(e)
+    }
+}
+
+impl From<sensor_common::Error> for HandleError {
+    fn from(e: sensor_common::Error) -> Self {
+        HandleError::Parsing(e)
+    }
+}
+
+impl From<onewire::OneWireError> for HandleError {
+    fn from(e: onewire::OneWireError) -> Self {
+        HandleError::OneWire(e)
+    }
+}
+
 
 // As we are not using interrupts, we just register a dummy catch all handler
 #[link_section = ".vector_table.interrupts"]
