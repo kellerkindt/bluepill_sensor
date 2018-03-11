@@ -21,6 +21,7 @@ extern crate onewire;
 extern crate pcd8544;
 extern crate enc28j60;
 extern crate w5500;
+extern crate sensor_common;
 
 use stm32f103xx_hal::prelude::*;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
@@ -47,10 +48,10 @@ use onewire::*;
 use pcd8544::*;
 use enc28j60::*;
 use w5500::*;
+use sensor_common::*;
 
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
-
 
 #[cfg(debug_assertions)]
 fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(f: F) {
@@ -170,6 +171,7 @@ fn main() {
     // enc.init().unwrap();
 
     let mut w5500 = W5500::new(spi, cs).unwrap();
+    let _ = w5500.listen_udp(Socket::Socket1, 51);
 
     loop {
         led.set_low();
@@ -226,41 +228,89 @@ fn main() {
                     Ok(temp) => {
                         writeln!(display, " {:.1}°C", temp);
 
-                        w5500.write_to(
-                            Register::Socket0Register(0x00_00),
-                            &[
-                                0b0000_0010, // UDP
-                                0x01 // OPEN / initialize
-                            ]
-                        );
-                        w5500.write_to(
-                            Register::Socket0Register(0x00_22),
-                            &[
-                                0x00, 0x00,
-                                0x00, 0x04, // 3 bytes
-                            ]
-                        );
+                        let mut buffer = [0u8; 2048];
+                        let result = w5500.try_receive_udp(Socket::Socket1, &mut buffer);
+                        match result {
+                            Err(e) => {
+                                writeln!(display, "{:?}", e);
+                            },
+                            Ok(option) => if let Some((ip, port, length)) = option {
+                                writeln!(display, "{} {}", ip, length);
 
-                        let mut buffer = [0u8; 4];
-                        LittleEndian::write_f32(&mut buffer, temp);
+                                let request = Request::read(&mut &buffer[..length]);
+                                match request {
+                                    Err(e) => {
+                                        writeln!(display, "{:?}", e);
+                                    }, // ignore
+                                    Ok(request) => {
+                                        match request {
+                                            Request::ReadAllOnBus(id, bus) if bus == Bus::OneWire => {
+                                                let response = Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32));
+                                                let size = response.write(&mut &mut buffer[..]);
+                                                if let Ok(size) = size {
+                                                    buffer[size + 0] = device.address[0];
+                                                    buffer[size + 1] = device.address[1];
+                                                    buffer[size + 2] = device.address[2];
+                                                    buffer[size + 3] = device.address[3];
+                                                    buffer[size + 4] = device.address[4];
+                                                    buffer[size + 5] = device.address[5];
+                                                    buffer[size + 6] = device.address[6];
+                                                    buffer[size + 7] = device.address[7];
 
-                        w5500.write_to(
-                            Register::Socket0TxBuffer(0x00_00),
-                            &buffer
-                        );
+                                                    LittleEndian::write_f32(&mut buffer[size+8..], temp);
 
-                        let mut ip = [0u8; 4];
-                        match w5500.read_from(Register::Socket0Register(0x00_22), &mut ip) {
-                            Err(_) => writeln!(display, "Failed to read"),
-                            Ok(_) => writeln!(display, "{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
+                                                    let _ = w5500.send_udp(
+                                                        Socket::Socket0,
+                                                        50,
+                                                        &ip,
+                                                        port,
+                                                        &buffer[..size+12],
+                                                    );
+                                                }
+                                            },
+
+                                            Request::ReadAllOnBus(id, _) | Request::ReadSingle(id) | Request::ReadAll(id) |Request::DiscoverAll(id) |Request::DiscoverAllOnBus(id, _) => {
+                                                let response = Response::NotImplemented(id);
+                                                let size = response.write(&mut &mut buffer[..]);
+                                                if let Ok(size) = size {
+                                                    let _ = w5500.send_udp(
+                                                        Socket::Socket0,
+                                                        50,
+                                                        &ip,
+                                                        port,
+                                                        &buffer[..size],
+                                                    );
+                                                }
+                                            },
+                                        };
+                                    }
+                                };
+
+                                /*
+                                let mut buffer = [0u8; 4];
+                                LittleEndian::write_f32(&mut buffer, temp);
+
+                                let _ = w5500.send_udp(
+                                    Socket::Socket0,
+                                    50,
+                                    &ip,
+                                    5354,
+                                    &buffer,
+                                );
+                                */
+
+                            } else {
+                                writeln!(display, "None");
+                            }
                         };
 
-                        w5500.write_to(
-                            Register::Socket0Register(0x00_01),
-                            &[
-                                0x20 // SEND
-                            ]
-                        );
+
+                        /*
+                        match w5500.get_mac() {
+                            Ok(mac) => writeln!(display, "{}", mac),
+                            Err(e) =>  writeln!(display, "{:?}", e),
+                        };
+                        */
                     },
                     Err(err) => {
                         writeln!(display, "E: {:?}", err);

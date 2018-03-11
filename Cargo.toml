@@ -52,6 +52,10 @@ path = "../onewire"
 version = "0.1.2"
 path = "../pcd8544"
 
+[dependencies.sensor_common]
+version = "*"
+path = "../sensor_common"
+
 [dependencies.stm32f103xx-hal]
 version = "0.1.0"
 path = "../stm32f103xx-hal"
