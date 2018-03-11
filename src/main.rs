@@ -51,7 +51,7 @@ use w5500::*;
 use sensor_common::*;
 
 use byteorder::ByteOrder;
-use byteorder::LittleEndian;
+use byteorder::NetworkEndian;
 
 #[cfg(debug_assertions)]
 fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(f: F) {
@@ -245,26 +245,27 @@ fn main() {
                                     Ok(request) => {
                                         match request {
                                             Request::ReadAllOnBus(id, bus) if bus == Bus::OneWire => {
-                                                let response = Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32));
-                                                let size = response.write(&mut &mut buffer[..]);
-                                                if let Ok(size) = size {
-                                                    buffer[size + 0] = device.address[0];
-                                                    buffer[size + 1] = device.address[1];
-                                                    buffer[size + 2] = device.address[2];
-                                                    buffer[size + 3] = device.address[3];
-                                                    buffer[size + 4] = device.address[4];
-                                                    buffer[size + 5] = device.address[5];
-                                                    buffer[size + 6] = device.address[6];
-                                                    buffer[size + 7] = device.address[7];
+                                                let size = {
+                                                    let response = Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32));
+                                                    let writer = (&mut &mut buffer[..]) as &mut sensor_common::Write;
+                                                    let size = response.write(writer);
+                                                    if let Ok(size) = size {
+                                                        let size = size + writer.write_all(&device.address).unwrap();
+                                                        let mut buf = [0u8; 4];
+                                                        NetworkEndian::write_f32(&mut buf[..], temp);
+                                                        Some(size + writer.write_all(&buf).unwrap())
+                                                    } else {
+                                                        None
+                                                    }
+                                                };
 
-                                                    LittleEndian::write_f32(&mut buffer[size+8..], temp);
-
+                                                if let Some(size) = size {
                                                     let _ = w5500.send_udp(
                                                         Socket::Socket0,
                                                         50,
                                                         &ip,
                                                         port,
-                                                        &buffer[..size+12],
+                                                        &buffer[..size],
                                                     );
                                                 }
                                             },
