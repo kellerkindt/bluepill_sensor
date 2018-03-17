@@ -184,7 +184,6 @@ fn main() {
             led.set_low();
         }
 
-        let _ = wire.reset(&mut delay);
         display.clear();
         writeln!(display, "{}", tick);
 
@@ -230,7 +229,7 @@ fn main() {
         display.set_x_position(0);
         display.set_y_position(0);
         writeln!(display, "TmpSensorAddr");
-        let mut search = OneWireDeviceSearch::new();
+        let mut search = DeviceSearch::new();
         let addr = match wire.search_next(&mut search, &mut delay) {
             Err(e) => {
                 write!(display, "E: {:?}", e);
@@ -302,7 +301,7 @@ fn main() {
                                                 // let _ = w5500.listen_udp(Socket::Socket1, 51);
                                             },
 
-                                            Request::ReadAllOnBus(id, _) | Request::ReadSingle(id) | Request::ReadAll(id) |Request::DiscoverAll(id) |Request::DiscoverAllOnBus(id, _) => {
+                                            Request::ReadAllOnBus(id, _) | Request::ReadSpecified(id, _) | Request::ReadAll(id) |Request::DiscoverAll(id) |Request::DiscoverAllOnBus(id, _) => {
                                                 let response = Response::NotImplemented(id);
                                                 let size = response.write(&mut &mut buffer[..]);
                                                 if let Ok(size) = size {
@@ -402,26 +401,41 @@ fn main() {
 
 fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputPin>(wire: &mut OneWire, delay: &mut Delay, w5500: &mut W5500<spi::Error, S , O>, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = w5500.try_receive_udp(socket_rcv, buffer)? {
-        let (request, response) = buffer.split_at_mut(size);
+        let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
         let response_size = {
-            let reader = &mut &*request as &mut Read;
-            let writer = &mut &mut *response as &mut ::sensor_common::Write;
+
+            let writer = &mut &mut *response_buffer as &mut ::sensor_common::Write;
 
             let available = writer.available();
 
-            let request = Request::read(reader)?;
+            let (request, request_length) = {
+                let reader = &mut &*whole_request_buffer as &mut Read;
+                let available = reader.available();
+                (Request::read(reader)?, available - reader.available())
+            };
+
             let id = request.id();
+            let (_request_header_buffer, request_content_buffer) = whole_request_buffer.split_at_mut(request_length);
 
              match request {
-                Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
-                    Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
-                    transmit_all_on_one_wire(wire, delay, writer)?;
-                },
-
-                _ => {
-                    Response::NotImplemented(id).write(writer)?;
-                }
+                 Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
+                     Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
+                     transmit_all_on_one_wire(wire, delay, writer)?;
+                 },
+                 Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
+                     Response::Ok(id, Format::AddressOnly(Type::Array(8))).write(writer)?;
+                     discover_all_on_one_wire(wire, delay, writer)?;
+                 },
+                 Request::ReadSpecified(id, Bus::OneWire) => {
+                     Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
+                     let ms_till_ready = prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
+                     delay.delay_ms(ms_till_ready);
+                     transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
+                 }
+                 _ => {
+                     Response::NotImplemented(id).write(writer)?;
+                 }
             };
 
             available - writer.available()
@@ -432,7 +446,7 @@ fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputP
             50,
             &ip,
             port,
-            &response[..response_size]
+            &response_buffer[..response_size]
         )?;
         Ok(Some((ip, port)))
     } else {
@@ -441,25 +455,18 @@ fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputP
 }
 
 fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
-    let mut search = OneWireDeviceSearch::new();
+    let mut search = DeviceSearch::new();
     while writer.available() >= 12 {
-        wire.reset(delay)?;
-        if let Ok(device) = wire.search_next(&mut search, delay) {
-            if let Some(device) = device {
-                let value = measure(wire, &device, delay)?;
+        if let Some(device) = wire.search_next(&mut search, delay)? {
 
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(&mut buffer[..], value);
+            let value = measure_retry_once_on_crc_error(wire, &device, delay)?;
 
-                writer.write_all(&device.address)?;
-                writer.write_all(&buffer)?;
+            let mut buffer = [0u8; 4];
+            NetworkEndian::write_f32(&mut buffer[..], value);
 
-                // TODO
-                return Ok(());
+            writer.write_all(&device.address)?;
+            writer.write_all(&buffer)?;
 
-            } else {
-                return Ok(());
-            }
         } else {
             return Ok(());
         }
@@ -467,25 +474,102 @@ fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut 
     Ok(())
 }
 
-fn measure(wire: &mut OneWire, device: &OneWireDevice, delay: &mut Delay) -> Result<f32, HandleError> {
-    if let Ok(ds18b20) = DS18B20::new(device.clone()) {
-        let measure_resolution = ds18b20.measure_temperature(wire, delay)?;
-        if measure_resolution.time_ms() > 0 {
-            delay.delay_ms(measure_resolution.time_ms());
+fn discover_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+    let mut search = DeviceSearch::new();
+    while writer.available() >= ADDRESS_BYTES as usize {
+        if let Some(device) = wire.search_next(&mut search, delay)? {
+            writer.write_all(&device.address)?;
+
+        } else {
+            return Ok(());
         }
-        return Ok(ds18b20.read_temperature(wire, delay)?);
     }
+    Ok(())
+}
 
-    // else if ...
+fn prepare_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<u16, HandleError> {
+    let mut ms_to_sleep = 0_u16;
+    while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
+        let device = Device {
+            address: [
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+            ]
+        };
 
-    Err(HandleError::Unavailable)
+        ms_to_sleep = prepare_measurement(wire, &device, delay)?.max(ms_to_sleep);
+    }
+    Ok(ms_to_sleep)
+}
+
+fn transmit_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+    while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
+        let device = Device {
+            address: [
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+                reader.read_u8()?,
+            ]
+        };
+
+        let value = measure_retry_once_on_crc_error(wire, &device, delay)?;
+
+        let mut buffer = [0u8; 4];
+        NetworkEndian::write_f32(&mut buffer[..], value);
+
+        writer.write_all(&device.address)?;
+        writer.write_all(&buffer)?;
+    }
+    Ok(())
+}
+
+fn measure_retry_once_on_crc_error(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
+    Ok(match measure(wire, device, delay) {
+        Ok(value) => value,
+        Err(HandleError::OneWire(onewire::Error::CrcMismatch(_, _))) => {
+            match measure(wire, &device, delay) {
+                Ok(value) => value,
+                _ => core::f32::NAN,
+            }
+        },
+        _ => core::f32::NAN,
+    })
+}
+
+fn prepare_measurement(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<u16, HandleError> {
+    match device.family_code() {
+        ds18b20::FAMILY_CODE => {
+            Ok(DS18B20::new(device.clone())?.start_measurement(wire, delay)?)
+        },
+        _ => Err(HandleError::Unavailable)
+    }
+}
+
+fn measure(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
+    match device.family_code() {
+        ds18b20::FAMILY_CODE => {
+            Ok(DS18B20::new(device.clone())?.read_measurement(wire, delay)?)
+        },
+        _ => Err(HandleError::Unavailable)
+    }
 }
 
 #[derive(Debug)]
 enum HandleError {
     Spi(spi::Error),
     Parsing(sensor_common::Error),
-    OneWire(onewire::OneWireError),
+    OneWire(onewire::Error),
     Unavailable
 }
 
@@ -501,8 +585,8 @@ impl From<sensor_common::Error> for HandleError {
     }
 }
 
-impl From<onewire::OneWireError> for HandleError {
-    fn from(e: onewire::OneWireError) -> Self {
+impl From<onewire::Error> for HandleError {
+    fn from(e: onewire::Error) -> Self {
         HandleError::OneWire(e)
     }
 }

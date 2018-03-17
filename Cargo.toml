@@ -42,7 +42,7 @@ version = "0.1.0"
 path = "../w5500"
 
 [dependencies.onewire]
-version = "^0.3.2"
+version = "^0.3.4"
 path = "../onewire"
 
 [dependencies.pcd8544]
