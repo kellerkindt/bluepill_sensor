@@ -23,9 +23,10 @@ extern crate w5500;
 extern crate sensor_common;
 
 use stm32f103xx_hal::prelude::*;
-use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
 use stm32f103xx_hal::gpio::Output;
 use stm32f103xx_hal::gpio::OpenDrain;
+use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
+use stm32f103xx_hal::prelude::_embedded_hal_digital_InputPin  as InputPin;
 use stm32f103xx_hal::gpio::gpioc::PCx;
 use stm32f103xx_hal::delay::Delay;
 
@@ -36,6 +37,7 @@ use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
 use embedded_hal::spi::FullDuplex;
+
 
 use stm32f103xx::GPIOC;
 
@@ -97,7 +99,7 @@ fn main() {
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
-    let mut one : PCx<Output<OpenDrain>> = gpioc.pc14.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
+    let mut one : PCx<Output<OpenDrain>> = gpioc.pc15.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
 
     let mut pcd_gnd   = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
@@ -141,22 +143,28 @@ fn main() {
     let mut afio = peripherals.AFIO.constrain(&mut rcc.apb2);
 
     // SPI1
-    let sck  = gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl);
+    let sclk = gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl);
     let miso = gpioa.pa6.into_floating_input(&mut gpioa.crl);
     let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
 
-    let mut cs = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
-    let mut rs = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
+    let mut cs_eeprom = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+    let mut cs_w5500 = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
+    let mut rs = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+
+    let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
+    self_reset.set_high();
 
     rs.set_low();
+    cs_w5500.set_high(); // low active
+    cs_eeprom.set_low(); // high active
     delay.delay_ms(100_u16);
     rs.set_high();
-    delay.delay_ms(100_u16);
+    delay.delay_ms(500_u16);
 
 
     let mut spi = Spi::spi1(
         peripherals.SPI1,
-        (sck, miso, mosi),
+        (sclk, miso, mosi),
         &mut afio.mapr,
         Mode {
             polarity: Polarity::IdleLow,
@@ -168,10 +176,18 @@ fn main() {
     );
 
 
-    let mut w5500 = W5500::new(spi, cs).unwrap();
+
+    let mut w5500 = W5500::new(spi, cs_w5500).unwrap();
+
+    w5500.set_mac(&MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00)).unwrap();
+    w5500.set_ip(&IpAddress::new(192, 168, 3, 223)).unwrap();
+    w5500.set_subnet(&IpAddress::new(255, 255, 255, 0)).unwrap();
+    w5500.set_gateway(&IpAddress::new(192, 168, 3, 1)).unwrap();
+
+
     let _ = w5500.listen_udp(Socket::Socket1, 51);
 
-    let mut wire = OneWire::new(&mut one, false);
+    let mut wire = OneWire::new(one, false);
     let _ = wire.reset(&mut delay);
 
     let mut tick = 0_u64;
@@ -202,204 +218,9 @@ fn main() {
         // delay.delay_ms(100_u16);
         tick += 1;
     }
-
-    loop {
-        led.set_low();
-        delay.delay_ms(speed);
-        led.set_high();
-        delay.delay_ms(speed);
-
-        let mut wire = OneWire::new(&mut one, false);
-        for _ in 0..16 {
-            let result = wire.reset(&mut delay);
-            stdout(|out| writeln!(out, "reset: {:?}", result));
-            // display.clear();
-            // write!(display, "{:?}", result);
-            if let Ok(ref result) = result {
-                if *result {
-                    speed = 25_u16;
-                } else {
-                    speed = 500_u16;
-                }
-            } else {
-                speed = 2_000_u16;
-            }
-        }
-        display.set_light(true);
-        display.set_x_position(0);
-        display.set_y_position(0);
-        writeln!(display, "TmpSensorAddr");
-        let mut search = DeviceSearch::new();
-        let addr = match wire.search_next(&mut search, &mut delay) {
-            Err(e) => {
-                write!(display, "E: {:?}", e);
-                None
-            },
-            Ok(addr) => {
-                if let Some(ref addr) = addr {
-                    writeln!(display, "{}", addr);
-                } else {
-                    writeln!(display, "None");
-                }
-                addr
-            }
-        };
-        if let Some(ref device) = addr {
-            if let Ok(ref mut ds18b20) = DS18B20::new(device.clone()) {
-                let _measure_resolution = ds18b20.measure_temperature(&mut wire, &mut delay);
-                match _measure_resolution {
-                    Err(e) => {},
-                    Ok(res)=> delay.delay_ms(res.time_ms())
-                };
-                let temp = ds18b20.read_temperature(&mut wire, &mut delay);
-
-                writeln!(display);
-                match temp {
-                    Ok(temp) => {
-                        writeln!(display, " {:.1}°C", temp);
-
-                        let mut buffer = [0u8; 2048];
-                        let result = w5500.try_receive_udp(Socket::Socket1, &mut buffer);
-                        match result {
-                            Err(e) => {
-                                writeln!(display, "{:?}", e);
-                            },
-                            Ok(option) => if let Some((ip, port, length)) = option {
-                                writeln!(display, "{} {}", ip, length);
-
-                                let request = Request::read(&mut &buffer[..length]);
-                                match request {
-                                    Err(e) => {
-                                        writeln!(display, "{:?}", e);
-                                    }, // ignore
-                                    Ok(request) => {
-                                        match request {
-                                            Request::ReadAllOnBus(id, bus) if bus == Bus::OneWire => {
-                                                let size = {
-                                                    let response = Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32));
-                                                    let writer = (&mut &mut buffer[..]) as &mut sensor_common::Write;
-                                                    let size = response.write(writer);
-                                                    if let Ok(size) = size {
-                                                        let size = size + writer.write_all(&device.address).unwrap();
-                                                        let mut buf = [0u8; 4];
-                                                        NetworkEndian::write_f32(&mut buf[..], temp);
-                                                        Some(size + writer.write_all(&buf).unwrap())
-                                                    } else {
-                                                        None
-                                                    }
-                                                };
-
-                                                if let Some(size) = size {
-                                                    let _ = w5500.send_udp(
-                                                        Socket::Socket0,
-                                                        50,
-                                                        &ip,
-                                                        port,
-                                                        &buffer[..size],
-                                                    );
-                                                }
-                                                // let _ = w5500.listen_udp(Socket::Socket1, 51);
-                                            },
-
-                                            Request::ReadAllOnBus(id, _) | Request::ReadSpecified(id, _) | Request::ReadAll(id) |Request::DiscoverAll(id) |Request::DiscoverAllOnBus(id, _) => {
-                                                let response = Response::NotImplemented(id);
-                                                let size = response.write(&mut &mut buffer[..]);
-                                                if let Ok(size) = size {
-                                                    let _ = w5500.send_udp(
-                                                        Socket::Socket0,
-                                                        50,
-                                                        &ip,
-                                                        port,
-                                                        &buffer[..size],
-                                                    );
-                                                }
-                                            },
-                                        };
-                                    }
-                                };
-
-                                /*
-                                let mut buffer = [0u8; 4];
-                                LittleEndian::write_f32(&mut buffer, temp);
-
-                                let _ = w5500.send_udp(
-                                    Socket::Socket0,
-                                    50,
-                                    &ip,
-                                    5354,
-                                    &buffer,
-                                );
-                                */
-
-                            } else {
-                                writeln!(display, "None");
-                            }
-                        };
-
-
-                        /*
-                        match w5500.get_mac() {
-                            Ok(mac) => writeln!(display, "{}", mac),
-                            Err(e) =>  writeln!(display, "{:?}", e),
-                        };
-                        */
-                    },
-                    Err(err) => {
-                        writeln!(display, "E: {:?}", err);
-                    }
-                };
-                //write!(display, " {:.1}°C 0x{:02x}{:02x}", tempf32, content[0], content[1]);
-                //write!(display, " {:}  °C 0x{:02x}{:02x}", temp as i16 / 16_i16, content[0], content[1]);
-                /*for b in content.iter() {
-                    write!(display, "{:02x} ", b);
-                }*/
-//            delay.delay_ms(1_500_u16);
-            } else {
-                writeln!(display, "family code mismatch");
-            }
-        }
-        /*
-        if let Err(e) = enc.reset() {
-            writeln!(display, "1 {:?}", e);
-        } else {
-            if let Err(e) = enc.test() {
-                writeln!(display, "2 {:?}", e);
-            } else {
-                writeln!(display, "{:?}", enc.send(&[
-                    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // destination mac address
-                    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, // source mac address,
-                    0x08, 0x00, // IPv4 Frame
-                    /// --- IP
-                    /*version*/ 0x40 | /*header length in 32bytes x */0x05,
-                    0x00, 0x00, // total IP Frame length TODO
-                    0b010_00000 /*dont fragment, last 5 bits fragment offset*/, 0x00, // fragment offset
-                    0xFF, // TTL
-                    17, // UDP
-                    0x00, 0x00, // checksum TODO
-                    192, 168, 3, 177, // source address
-                    192, 168, 3, 55, // destination address
-                    // --- UDP
-                ]));
-                /*
-                match enc.read_mac() {
-                    Err(e) => {
-                        writeln!(display, "3 {:?}", e);
-                    },
-                    Ok(addr) => {
-                        write!(display, "{:02x}", addr[5]);
-                        write!(display, ":{:02x}", addr[4]);
-                        write!(display, ":{:02x}", addr[3]);
-                        write!(display, ":{:02x}", addr[2]);
-                        write!(display, ":{:02x}", addr[1]);
-                        writeln!(display, ":{:02x}", addr[0]);
-                    }
-                };*/
-            }
-        }*/
-    }
 }
 
-fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputPin>(wire: &mut OneWire, delay: &mut Delay, w5500: &mut W5500<spi::Error, S , O>, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500<spi::Error, S , O>, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = w5500.try_receive_udp(socket_rcv, buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
@@ -454,12 +275,12 @@ fn handle_udp_requests<S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputP
     }
 }
 
-fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn transmit_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     let mut search = DeviceSearch::new();
     while writer.available() >= 12 {
         if let Some(device) = wire.search_next(&mut search, delay)? {
 
-            let value = measure_retry_once_on_crc_error(wire, &device, delay)?;
+            let value = measure_retry_once_on_crc_error(wire, &device, delay);
 
             let mut buffer = [0u8; 4];
             NetworkEndian::write_f32(&mut buffer[..], value);
@@ -474,7 +295,7 @@ fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut 
     Ok(())
 }
 
-fn discover_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn discover_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     let mut search = DeviceSearch::new();
     while writer.available() >= ADDRESS_BYTES as usize {
         if let Some(device) = wire.search_next(&mut search, delay)? {
@@ -487,7 +308,7 @@ fn discover_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut 
     Ok(())
 }
 
-fn prepare_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<u16, HandleError> {
+fn prepare_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<u16, HandleError> {
     let mut ms_to_sleep = 0_u16;
     while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
         let device = Device {
@@ -508,7 +329,7 @@ fn prepare_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: 
     Ok(ms_to_sleep)
 }
 
-fn transmit_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn transmit_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
         let device = Device {
             address: [
@@ -523,7 +344,7 @@ fn transmit_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader:
             ]
         };
 
-        let value = measure_retry_once_on_crc_error(wire, &device, delay)?;
+        let value = measure_retry_once_on_crc_error(wire, &device, delay);
 
         let mut buffer = [0u8; 4];
         NetworkEndian::write_f32(&mut buffer[..], value);
@@ -534,8 +355,8 @@ fn transmit_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader:
     Ok(())
 }
 
-fn measure_retry_once_on_crc_error(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
-    Ok(match measure(wire, device, delay) {
+fn measure_retry_once_on_crc_error<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> f32 {
+    match measure(wire, device, delay) {
         Ok(value) => value,
         Err(HandleError::OneWire(onewire::Error::CrcMismatch(_, _))) => {
             match measure(wire, &device, delay) {
@@ -544,10 +365,10 @@ fn measure_retry_once_on_crc_error(wire: &mut OneWire, device: &Device, delay: &
             }
         },
         _ => core::f32::NAN,
-    })
+    }
 }
 
-fn prepare_measurement(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<u16, HandleError> {
+fn prepare_measurement<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> Result<u16, HandleError> {
     match device.family_code() {
         ds18b20::FAMILY_CODE => {
             Ok(DS18B20::new(device.clone())?.start_measurement(wire, delay)?)
@@ -556,7 +377,7 @@ fn prepare_measurement(wire: &mut OneWire, device: &Device, delay: &mut Delay) -
     }
 }
 
-fn measure(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
+fn measure<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
     match device.family_code() {
         ds18b20::FAMILY_CODE => {
             Ok(DS18B20::new(device.clone())?.read_measurement(wire, delay)?)
