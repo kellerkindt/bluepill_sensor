@@ -116,30 +116,6 @@ fn main() {
     pcd_light.set_high();
     pcd_vcc  .set_high();
 
-    let mut display = PCD8544::new(
-        &mut pcd_clk,
-        &mut pcd_din,
-        &mut pcd_dc,
-        &mut pcd_ce,
-        &mut pcd_rst,
-        &mut pcd_light,
-    );
-
-    display.reset();
-    display.write_str("Hello World");
-
-
-    /*
-    let mut test = 0u8;
-    let mut probe2 = [0u8; 18024];
-    let mut probe3 = 0u8;
-    display.clear();
-    //write!(display, "sizeof: {}", core::mem::size_of::<PCx<Output<OpenDrain>>>());
-    write!(display, "address: {}  {}  {}", probe0 as usize - 0x20000000_usize, (&mut "tes" as *mut _) as usize - 0x20000000_usize, (&mut probe2[0] as *mut _) as usize - 0x20000000_usize);
-    */
-    display.clear();
-
-
     let mut afio = peripherals.AFIO.constrain(&mut rcc.apb2);
 
     // SPI1
@@ -192,26 +168,24 @@ fn main() {
 
     let mut tick = 0_u64;
 
-    display.set_light(true);
     loop {
-        if led.is_low() {
-            led.set_high();
-        } else {
-            led.set_low();
+        if tick % 100 == 0 {
+            if led.is_low() {
+                led.set_high();
+            } else {
+                led.set_low();
+            }
         }
-
-        display.clear();
-        writeln!(display, "{}", tick);
 
         match handle_udp_requests(&mut wire, &mut delay, &mut w5500, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
             Err(e) => {
-                writeln!(display, "Error:");
-                writeln!(display, "{:?}", e);
+                // writeln!(display, "Error:");
+                // writeln!(display, "{:?}", e);
                 delay.delay_ms(2_000_u16);
             },
             Ok(address) => if let Some((ip, port)) = address {
-                writeln!(display, "Fine:");
-                writeln!(display, "{}:{}", ip, port);
+                // writeln!(display, "Fine:");
+                // writeln!(display, "{}:{}", ip, port);
             }
         };
 
