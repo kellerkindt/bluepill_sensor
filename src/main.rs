@@ -17,10 +17,15 @@ extern crate embedded_hal;
 
 extern crate byteorder;
 
+#[macro_use(block)]
+extern crate nb;
+
 extern crate onewire;
 extern crate pcd8544;
 extern crate w5500;
 extern crate sensor_common;
+
+mod ds93c46;
 
 use stm32f103xx_hal::prelude::*;
 use stm32f103xx_hal::gpio::Output;
@@ -146,22 +151,22 @@ fn main() {
             polarity: Polarity::IdleLow,
             phase: Phase::CaptureOnFirstTransition,
         },
-        1.mhz(), // upt to 8mhz?
+        2.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
         clocks,
         &mut rcc.apb2,
     );
 
 
 
-    let mut w5500 = W5500::new(spi, cs_w5500).unwrap();
+    let mut w5500 = W5500::new(&mut spi, &mut cs_w5500).unwrap();
 
-    w5500.set_mac(&MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00)).unwrap();
-    w5500.set_ip(&IpAddress::new(192, 168, 3, 223)).unwrap();
-    w5500.set_subnet(&IpAddress::new(255, 255, 255, 0)).unwrap();
-    w5500.set_gateway(&IpAddress::new(192, 168, 3, 1)).unwrap();
+    w5500.set_mac(&mut spi, &MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00)).unwrap();
+    w5500.set_ip(&mut spi, &IpAddress::new(192, 168, 3, 223)).unwrap();
+    w5500.set_subnet(&mut spi, &IpAddress::new(255, 255, 255, 0)).unwrap();
+    w5500.set_gateway(&mut spi, &IpAddress::new(192, 168, 3, 1)).unwrap();
 
 
-    let _ = w5500.listen_udp(Socket::Socket1, 51);
+    let _ = w5500.listen_udp(&mut spi, Socket::Socket1, 51);
 
     let mut wire = OneWire::new(one, false);
     let _ = wire.reset(&mut delay);
@@ -177,7 +182,7 @@ fn main() {
             }
         }
 
-        match handle_udp_requests(&mut wire, &mut delay, &mut w5500, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
+        match handle_udp_requests(&mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
             Err(e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
@@ -194,8 +199,8 @@ fn main() {
     }
 }
 
-fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error = spi::Error> + Sized, O: OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500<spi::Error, S , O>, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
-    if let Some((ip, port, size)) = w5500.try_receive_udp(socket_rcv, buffer)? {
+fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+    if let Some((ip, port, size)) = w5500.try_receive_udp(spi, socket_rcv, buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
         let response_size = {
@@ -237,6 +242,7 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error = spi::E
         };
 
         w5500.send_udp(
+            spi,
             socket_send,
             50,
             &ip,
