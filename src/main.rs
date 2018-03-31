@@ -166,7 +166,7 @@ fn main() {
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
 
-    let configuration = match Configuration::from(&mut ds93c46, &mut spi, &mut delay) {
+    let configuration = match NetworkConfiguration::from(&mut ds93c46, &mut spi, &mut delay) {
         Ok(configuration) => {
             /*
             loop {
@@ -180,7 +180,7 @@ fn main() {
             configuration
         },
         Err(e) => {
-            let conf = Configuration::default();
+            let conf = NetworkConfiguration::default();
             let result = conf.write(&mut ds93c46, &mut spi, &mut delay);
             if result.is_err() {
                 loop {
@@ -229,7 +229,7 @@ fn main() {
             }
         }
 
-        match handle_udp_requests(&mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
+        match handle_udp_requests(&configuration, &mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
             Err(e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
@@ -246,7 +246,7 @@ fn main() {
     }
 }
 
-fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(net_conf: &NetworkConfiguration, wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = w5500.try_receive_udp(spi, socket_rcv, buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
@@ -267,19 +267,35 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Err
 
              match request {
                  Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
+                     Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
                      transmit_all_on_one_wire(wire, delay, writer)?;
                  },
                  Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressOnly(Type::Array(8))).write(writer)?;
+                     Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
                      discover_all_on_one_wire(wire, delay, writer)?;
                  },
                  Request::ReadSpecified(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressValuePairs(Type::Array(8), Type::F32)).write(writer)?;
+                     Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
                      let ms_till_ready = prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
                      delay.delay_ms(ms_till_ready);
                      transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
-                 }
+                 },
+
+                 Request::RetrieveNetworkConfiguration(id) => {
+                     Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3*4))).write(writer)?;
+                     writer.write_all(&net_conf.mac.address)?;
+                     writer.write_all(&net_conf.ip.address)?;
+                     writer.write_all(&net_conf.subnet.address)?;
+                     writer.write_all(&net_conf.gateway.address)?;
+                 },
+
+                 Request::RetrieveVersionInformation(id) => {
+                     let version : &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
+                     let len = version.len() as u8;
+                     Response::Ok(id, Format::ValueOnly(Type::String(len))).write(writer)?;
+                     writer.write_all(&version[..len as usize])?;
+                 },
+
                  _ => {
                      Response::NotImplemented(id).write(writer)?;
                  }
@@ -451,17 +467,17 @@ extern "C" fn default_handler() {
     // asm::bkpt();
 }
 
-const MAGIC_EEPROM_CRC_START : u8 = 0x47;
+const MAGIC_EEPROM_CRC_START : u8 = 0x42;
 
-struct Configuration {
+struct NetworkConfiguration {
     mac: MacAddress,
     ip: IpAddress,
     subnet: IpAddress,
     gateway: IpAddress,
 }
 
-impl Configuration {
-    fn from<S: FullDuplex<u8, Error=spi::Error>>(eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<Configuration, HandleError> {
+impl NetworkConfiguration {
+    fn from<S: FullDuplex<u8, Error=spi::Error>>(eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<NetworkConfiguration, HandleError> {
         let mut buf = [0u8; 6 + 3*4 + 2];
         eeprom.read(spi, delay, 0x00, &mut buf)?;
         if buf[0] != MAGIC_EEPROM_CRC_START {
@@ -471,7 +487,7 @@ impl Configuration {
             if crc != buf[19] {
                 Err(HandleError::CrcError)
             } else {
-                Ok(Configuration {
+                Ok(NetworkConfiguration {
                     mac:    MacAddress::new(buf[ 1], buf[ 2], buf[ 3], buf[ 4], buf[ 5], buf[ 6]),
                     ip:      IpAddress::new(buf[ 7], buf[ 8], buf[ 9], buf[10]),
                     subnet:  IpAddress::new(buf[11], buf[12], buf[13], buf[14]),
@@ -497,11 +513,11 @@ impl Configuration {
     }
 }
 
-impl Default for Configuration {
+impl Default for NetworkConfiguration {
     fn default() -> Self {
-        Configuration {
+        NetworkConfiguration {
             mac: MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00),
-            ip: IpAddress::new(192, 168, 3, 223),
+            ip: IpAddress::new(192, 168, 3, 224),
             subnet: IpAddress::new(255, 255, 255, 0),
             gateway: IpAddress::new(192, 168, 3, 1),
         }
