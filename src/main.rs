@@ -166,7 +166,7 @@ fn main() {
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
 
-    let configuration = match NetworkConfiguration::from(&mut ds93c46, &mut spi, &mut delay) {
+    let mut configuration = match NetworkConfiguration::from(&mut ds93c46, &mut spi, &mut delay) {
         Ok(configuration) => {
             /*
             loop {
@@ -229,7 +229,7 @@ fn main() {
             }
         }
 
-        match handle_udp_requests(&configuration, &mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
+        match handle_udp_requests(&mut configuration, &mut self_reset, &mut ds93c46, &mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
             Err(e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
@@ -246,10 +246,11 @@ fn main() {
     }
 }
 
-fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(net_conf: &NetworkConfiguration, wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(net_conf: &mut NetworkConfiguration, self_reset: &mut OutputPin, eeprom: &mut DS93C46, wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = w5500.try_receive_udp(spi, socket_rcv, buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
+        let mut reset = false;
         let response_size = {
 
             let writer = &mut &mut *response_buffer as &mut ::sensor_common::Write;
@@ -279,6 +280,21 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Err
                      let ms_till_ready = prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
                      delay.delay_ms(ms_till_ready);
                      transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
+                 },
+
+                 Request::SetNetworkMac(id, mac) => {
+                     net_conf.mac.address.copy_from_slice(&mac);
+                     net_conf.write(eeprom, spi, delay)?;
+                     Response::Ok(id, Format::Empty).write(writer)?;
+                     reset = true;
+                 },
+                 Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
+                     net_conf.ip.address.copy_from_slice(&ip);
+                     net_conf.subnet.address.copy_from_slice(&subnet);
+                     net_conf.gateway.address.copy_from_slice(&gateway);
+                     net_conf.write(eeprom, spi, delay)?;
+                     Response::Ok(id, Format::Empty).write(writer)?;
+                     reset = true;
                  },
 
                  Request::RetrieveNetworkConfiguration(id) => {
@@ -312,6 +328,11 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Err
             port,
             &response_buffer[..response_size]
         )?;
+        if reset {
+            // increase possibility that packet is out
+            delay.delay_ms(100_u16);
+            self_reset.set_low();
+        }
         Ok(Some((ip, port)))
     } else {
         Ok(None)

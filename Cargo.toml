@@ -12,7 +12,7 @@
 
 [package]
 name = "hebeanlage"
-version = "0.2.4"
+version = "0.3.0"
 #authors = ["Jorge Aparicio <jorge@japaric.io>"]
 #description = "A template for building applications for ARM Cortex-M microcontrollers"
 #keywords = ["arm", "cortex-m", "template"]
