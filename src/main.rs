@@ -42,6 +42,8 @@ use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
 use embedded_hal::spi::FullDuplex;
+use embedded_hal::blocking::delay::DelayUs;
+use embedded_hal::blocking::delay::DelayMs;
 
 
 use stm32f103xx::GPIOC;
@@ -59,6 +61,8 @@ use sensor_common::*;
 
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
+
+use ds93c46::*;
 
 #[cfg(debug_assertions)]
 fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(f: F) {
@@ -151,7 +155,7 @@ fn main() {
             polarity: Polarity::IdleLow,
             phase: Phase::CaptureOnFirstTransition,
         },
-        2.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
+        8.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
         clocks,
         &mut rcc.apb2,
     );
@@ -159,11 +163,54 @@ fn main() {
 
 
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500).unwrap();
+    let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
-    w5500.set_mac(&mut spi, &MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00)).unwrap();
-    w5500.set_ip(&mut spi, &IpAddress::new(192, 168, 3, 223)).unwrap();
-    w5500.set_subnet(&mut spi, &IpAddress::new(255, 255, 255, 0)).unwrap();
-    w5500.set_gateway(&mut spi, &IpAddress::new(192, 168, 3, 1)).unwrap();
+
+    let configuration = match Configuration::from(&mut ds93c46, &mut spi, &mut delay) {
+        Ok(configuration) => {
+            /*
+            loop {
+                delay.delay_ms(500_u16);
+                if led.is_low() {
+                    led.set_high();
+                } else {
+                    led.set_low();
+                }
+            }*/
+            configuration
+        },
+        Err(e) => {
+            let conf = Configuration::default();
+            let result = conf.write(&mut ds93c46, &mut spi, &mut delay);
+            if result.is_err() {
+                loop {
+                    delay.delay_ms(1500_u16);
+                    if led.is_low() {
+                        led.set_high();
+                    } else {
+                        led.set_low();
+                    }
+                }
+            }
+            if let HandleError::CrcError = e {
+                loop {
+                    delay.delay_ms(2000_u16);
+                    if led.is_low() {
+                        led.set_high();
+                    } else {
+                        led.set_low();
+                    }
+                }
+            }
+            conf
+        }
+    };
+
+
+    w5500.set_mac(&mut spi, &configuration.mac).unwrap();
+    w5500.set_ip(&mut spi, &configuration.ip).unwrap();
+    w5500.set_subnet(&mut spi, &configuration.subnet).unwrap();
+    w5500.set_gateway(&mut spi, &configuration.gateway).unwrap();
 
 
     let _ = w5500.listen_udp(&mut spi, Socket::Socket1, 51);
@@ -371,7 +418,9 @@ enum HandleError {
     Spi(spi::Error),
     Parsing(sensor_common::Error),
     OneWire(onewire::Error),
-    Unavailable
+    Unavailable,
+    NotMagicCrcAtStart,
+    CrcError
 }
 
 impl From<spi::Error> for HandleError {
@@ -400,4 +449,61 @@ static INTERRUPTS: [extern "C" fn(); 240] = [default_handler; 240];
 
 extern "C" fn default_handler() {
     // asm::bkpt();
+}
+
+const MAGIC_EEPROM_CRC_START : u8 = 0x47;
+
+struct Configuration {
+    mac: MacAddress,
+    ip: IpAddress,
+    subnet: IpAddress,
+    gateway: IpAddress,
+}
+
+impl Configuration {
+    fn from<S: FullDuplex<u8, Error=spi::Error>>(eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<Configuration, HandleError> {
+        let mut buf = [0u8; 6 + 3*4 + 2];
+        eeprom.read(spi, delay, 0x00, &mut buf)?;
+        if buf[0] != MAGIC_EEPROM_CRC_START {
+            Err(HandleError::NotMagicCrcAtStart)
+        } else {
+            let crc = onewire::compute_partial_crc8(MAGIC_EEPROM_CRC_START, &buf[1..19]);
+            if crc != buf[19] {
+                Err(HandleError::CrcError)
+            } else {
+                Ok(Configuration {
+                    mac:    MacAddress::new(buf[ 1], buf[ 2], buf[ 3], buf[ 4], buf[ 5], buf[ 6]),
+                    ip:      IpAddress::new(buf[ 7], buf[ 8], buf[ 9], buf[10]),
+                    subnet:  IpAddress::new(buf[11], buf[12], buf[13], buf[14]),
+                    gateway: IpAddress::new(buf[15], buf[16], buf[17], buf[18]),
+                })
+            }
+        }
+    }
+
+    fn write<S: FullDuplex<u8, Error=spi::Error>>(&self, eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<(), HandleError> {
+        let mut buf = [0u8; 6 + 3*4 + 2];
+        buf[0] = MAGIC_EEPROM_CRC_START;
+        buf[1..7].copy_from_slice(&self.mac.address);
+        buf[7..11].copy_from_slice(&self.ip.address);
+        buf[11..15].copy_from_slice(&self.subnet.address);
+        buf[15..19].copy_from_slice(&self.gateway.address);
+        let crc = onewire::compute_partial_crc8(MAGIC_EEPROM_CRC_START, &buf[1..19]);
+        buf[19] = crc;
+        eeprom.enable_write(spi, delay)?;
+        let result = eeprom.write(spi, delay, 0x00, &buf);
+        eeprom.disable_write(spi, delay)?;
+        Ok(result?)
+    }
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Configuration {
+            mac: MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x01, 0x00),
+            ip: IpAddress::new(192, 168, 3, 223),
+            subnet: IpAddress::new(255, 255, 255, 0),
+            gateway: IpAddress::new(192, 168, 3, 1),
+        }
+    }
 }
