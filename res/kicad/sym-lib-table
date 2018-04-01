@@ -1,0 +1,8 @@
+(sym_lib_table
+  (lib (name stm32f103)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/stm32f103.lib)(options "")(descr ""))
+  (lib (name bluepill_breakouts)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/bluepill_rogerclark/libraries/bluepill_breakouts.lib)(options "")(descr ""))
+  (lib (name W5500)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/W5500.lib)(options "")(descr ""))
+  (lib (name 93c46)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/93c46.lib)(options "")(descr ""))
+  (lib (name WIZnet_W5500_MagJack-cache)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/WIZnet_W5500_MagJack-cache.lib)(options "")(descr ""))
+  (lib (name WIZ850io)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/WIZ850io.lib)(options "")(descr ""))
+)
