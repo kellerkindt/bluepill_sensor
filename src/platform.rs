@@ -4,6 +4,7 @@ use stm32f103xx_hal::delay::Delay;
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::FullDuplex;
+use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::delay::DelayUs;
 
 use NetworkConfiguration;
@@ -50,11 +51,13 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     }
 
     pub fn init_network(&mut self) -> Result<(), spi::Error> {
+        self.network.init       (self.spi)?;
         self.network.set_mac    (self.spi, &self.network_config.mac)?;
         self.network.set_ip     (self.spi, &self.network_config.ip)?;
         self.network.set_subnet (self.spi, &self.network_config.subnet)?;
         self.network.set_gateway(self.spi, &self.network_config.gateway)?;
 
+        self.delay.delay_ms(10_u16);
 
         /*
         self.network.set_socket_interrupt_mask(self.spi, SOCKET_UDP, &[

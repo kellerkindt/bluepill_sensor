@@ -166,9 +166,10 @@ fn main() {
 
 
 
-    let mut w5500 = W5500::new(&mut spi, &mut cs_w5500).unwrap();
+    let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
+    /*
 
     let mut configuration = match NetworkConfiguration::from(&mut ds93c46, &mut spi, &mut delay) {
         Ok(configuration) => {
@@ -212,7 +213,7 @@ fn main() {
 
 
 
-
+*/
 
     let mut wire = OneWire::new(&mut one, false);
 
@@ -231,7 +232,17 @@ fn main() {
     };
 
     // TODO error handling
-    let _ = platform.load_network_configuration();
+    if platform.load_network_configuration().is_err() {
+        for _ in 0..4 {
+            platform.delay.delay_ms(1000_u16);
+            if led.is_low() {
+                led.set_high();
+            } else {
+                led.set_low();
+            }
+        }
+    }
+    platform.delay.delay_ms(25_u16);
     let _ = platform.init_network();
     let _ = platform.init_onewire();
 
@@ -308,7 +319,8 @@ fn handle_udp_requests(platform: &mut Platform, buffer: &mut [u8]) -> Result<Opt
         if reset {
             // increase possibility that packet is out
             platform.delay.delay_ms(100_u16);
-            platform.reset();
+            let _ = platform.load_network_configuration();
+            // platform.reset();
         }
         Ok(Some((ip, port)))
     } else {
@@ -527,7 +539,7 @@ extern "C" fn default_handler() {
     // asm::bkpt();
 }
 
-const MAGIC_EEPROM_CRC_START : u8 = 0x42;
+const MAGIC_EEPROM_CRC_START : u8 = 0x48;
 
 pub struct NetworkConfiguration {
     mac: MacAddress,
@@ -553,7 +565,7 @@ impl NetworkConfiguration {
             if crc != buf[19] {
                 Err(HandleError::CrcError)
             } else {
-                self.mac    .address.copy_from_slice(&buf[ 1.. 7]);
+                self.mac    .address.copy_from_slice(&buf[ 1..7]);
                 self.ip     .address.copy_from_slice(&buf[ 7..11]);
                 self.subnet .address.copy_from_slice(&buf[11..15]);
                 self.gateway.address.copy_from_slice(&buf[15..19]);
