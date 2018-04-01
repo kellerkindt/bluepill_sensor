@@ -1,7 +1,7 @@
 #!/bin/bash
 
 unset CARGO_INCREMENTAL
-BIN="target/thumbv7m-none-eabi/release/hebeanlage"
+BIN="target/thumbv7m-none-eabi/release/bluepill_sensor"
 
 rustup run nightly xargo build --release \
  && sudo openocd \
