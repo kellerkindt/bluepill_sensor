@@ -1,8 +1,7 @@
 #!/bin/bash
 
 unset CARGO_INCREMENTAL
-
-BIN="target/thumbv7em-none-eabihf/debug/hebeanlage"
+BIN="target/thumbv7m-none-eabi/release/bluepill_sensor"
 
 rustup run nightly xargo build  \
  && arm-none-eabi-gdb "$BIN"
