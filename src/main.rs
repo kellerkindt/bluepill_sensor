@@ -25,6 +25,7 @@ extern crate pcd8544;
 extern crate w5500;
 extern crate sensor_common;
 
+mod platform;
 mod ds93c46;
 
 use stm32f103xx_hal::prelude::*;
@@ -55,6 +56,7 @@ use cortex_m::asm;
 use self::cortex_m_semihosting::hio;
 
 use onewire::*;
+use onewire::compute_partial_crc8 as crc8;
 use pcd8544::*;
 use w5500::*;
 use sensor_common::*;
@@ -63,6 +65,7 @@ use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 
 use ds93c46::*;
+use platform::*;
 
 #[cfg(debug_assertions)]
 fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(f: F) {
@@ -96,6 +99,7 @@ fn main() {
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
+
 
     let mut speed = 500_u16;
 
@@ -142,9 +146,9 @@ fn main() {
     rs.set_low();
     cs_w5500.set_high(); // low active
     cs_eeprom.set_low(); // high active
-    delay.delay_ms(100_u16);
+    delay.delay_ms(250_u16);
     rs.set_high();
-    delay.delay_ms(500_u16);
+    delay.delay_ms(250_u16);
 
 
     let mut spi = Spi::spi1(
@@ -155,7 +159,7 @@ fn main() {
             polarity: Polarity::IdleLow,
             phase: Phase::CaptureOnFirstTransition,
         },
-        8.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
+        1.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
         clocks,
         &mut rcc.apb2,
     );
@@ -207,16 +211,30 @@ fn main() {
     };
 
 
-    w5500.set_mac(&mut spi, &configuration.mac).unwrap();
-    w5500.set_ip(&mut spi, &configuration.ip).unwrap();
-    w5500.set_subnet(&mut spi, &configuration.subnet).unwrap();
-    w5500.set_gateway(&mut spi, &configuration.gateway).unwrap();
 
 
-    let _ = w5500.listen_udp(&mut spi, Socket::Socket1, 51);
 
-    let mut wire = OneWire::new(one, false);
-    let _ = wire.reset(&mut delay);
+    let mut wire = OneWire::new(&mut one, false);
+
+    let mut platform = Platform {
+        delay:   &mut delay,
+        onewire: &mut wire,
+        spi:     &mut spi,
+
+        network:        &mut w5500,
+        network_reset:  &mut rs,
+        network_config: NetworkConfiguration::default(),
+
+        eeprom:        &mut ds93c46,
+
+        reset: &mut self_reset,
+    };
+
+    // TODO error handling
+    let _ = platform.load_network_configuration();
+    let _ = platform.init_network();
+    let _ = platform.init_onewire();
+
 
     let mut tick = 0_u64;
 
@@ -229,11 +247,11 @@ fn main() {
             }
         }
 
-        match handle_udp_requests(&mut configuration, &mut self_reset, &mut ds93c46, &mut wire, &mut delay, &mut w5500, &mut spi, Socket::Socket1, Socket::Socket0, &mut [0u8; 2048]) {
+        match handle_udp_requests(&mut platform, &mut [0u8; 2048]) {
             Err(e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
-                delay.delay_ms(2_000_u16);
+                platform.delay.delay_ms(2_000_u16);
             },
             Ok(address) => if let Some((ip, port)) = address {
                 // writeln!(display, "Fine:");
@@ -245,9 +263,8 @@ fn main() {
         tick += 1;
     }
 }
-
-fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Error>>(net_conf: &mut NetworkConfiguration, self_reset: &mut OutputPin, eeprom: &mut DS93C46, wire: &mut OneWire<T>, delay: &mut Delay, w5500: &mut W5500, spi: &mut S, socket_rcv: Socket, socket_send: Socket, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
-    if let Some((ip, port, size)) = w5500.try_receive_udp(spi, socket_rcv, buffer)? {
+fn handle_udp_requests(platform: &mut Platform, buffer: &mut [u8]) -> Result<Option<(IpAddress, u16)>, HandleError> {
+    if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
         let mut reset = false;
@@ -266,72 +283,32 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Err
             let id = request.id();
             let (_request_header_buffer, request_content_buffer) = whole_request_buffer.split_at_mut(request_length);
 
-             match request {
-                 Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
-                     transmit_all_on_one_wire(wire, delay, writer)?;
-                 },
-                 Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
-                     discover_all_on_one_wire(wire, delay, writer)?;
-                 },
-                 Request::ReadSpecified(id, Bus::OneWire) => {
-                     Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
-                     let ms_till_ready = prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
-                     delay.delay_ms(ms_till_ready);
-                     transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
-                 },
-
-                 Request::SetNetworkMac(id, mac) => {
-                     net_conf.mac.address.copy_from_slice(&mac);
-                     net_conf.write(eeprom, spi, delay)?;
-                     Response::Ok(id, Format::Empty).write(writer)?;
-                     reset = true;
-                 },
-                 Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
-                     net_conf.ip.address.copy_from_slice(&ip);
-                     net_conf.subnet.address.copy_from_slice(&subnet);
-                     net_conf.gateway.address.copy_from_slice(&gateway);
-                     net_conf.write(eeprom, spi, delay)?;
-                     Response::Ok(id, Format::Empty).write(writer)?;
-                     reset = true;
-                 },
-
-                 Request::RetrieveNetworkConfiguration(id) => {
-                     Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3*4))).write(writer)?;
-                     writer.write_all(&net_conf.mac.address)?;
-                     writer.write_all(&net_conf.ip.address)?;
-                     writer.write_all(&net_conf.subnet.address)?;
-                     writer.write_all(&net_conf.gateway.address)?;
-                 },
-
-                 Request::RetrieveVersionInformation(id) => {
-                     let version : &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
-                     let len = version.len() as u8;
-                     Response::Ok(id, Format::ValueOnly(Type::String(len))).write(writer)?;
-                     writer.write_all(&version[..len as usize])?;
-                 },
-
-                 _ => {
-                     Response::NotImplemented(id).write(writer)?;
-                 }
-            };
+            reset = handle_udp_requests_legacy(
+                id,
+                request,
+                &mut platform.network_config,
+                platform.reset,
+                platform.eeprom,
+                platform.onewire,
+                platform.delay,
+                platform.spi,
+                request_content_buffer,
+                writer
+            )?;
 
             available - writer.available()
         };
 
-        w5500.send_udp(
-            spi,
-            socket_send,
-            50,
+        platform.send_udp(
             &ip,
             port,
             &response_buffer[..response_size]
         )?;
+
         if reset {
             // increase possibility that packet is out
-            delay.delay_ms(100_u16);
-            self_reset.set_low();
+            platform.delay.delay_ms(100_u16);
+            platform.reset();
         }
         Ok(Some((ip, port)))
     } else {
@@ -339,7 +316,69 @@ fn handle_udp_requests<T: InputPin + OutputPin, S: FullDuplex<u8, Error=spi::Err
     }
 }
 
-fn transmit_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn handle_udp_requests_legacy(
+    id: u8,
+    request: Request, net_conf: &mut NetworkConfiguration, self_reset: &mut OutputPin,
+    eeprom: &mut DS93C46, wire: &mut OneWire, delay: &mut Delay,
+    spi: &mut FullDuplex<u8, Error=spi::Error>,
+    request_content_buffer: &[u8], writer: &mut ::sensor_common::Write) -> Result<bool, HandleError> {
+
+    let mut reset = false;
+
+    match request {
+         Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
+             Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
+             transmit_all_on_one_wire(wire, delay, writer)?;
+         },
+         Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
+             Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
+             discover_all_on_one_wire(wire, delay, writer)?;
+         },
+         Request::ReadSpecified(id, Bus::OneWire) => {
+             Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
+             let ms_till_ready = prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
+             delay.delay_ms(ms_till_ready);
+             transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
+         },
+
+         Request::SetNetworkMac(id, mac) => {
+             net_conf.mac.address.copy_from_slice(&mac);
+             net_conf.write(eeprom, spi, delay)?;
+             Response::Ok(id, Format::Empty).write(writer)?;
+             reset = true;
+         },
+         Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
+             net_conf.ip.address.copy_from_slice(&ip);
+             net_conf.subnet.address.copy_from_slice(&subnet);
+             net_conf.gateway.address.copy_from_slice(&gateway);
+             net_conf.write(eeprom, spi, delay)?;
+             Response::Ok(id, Format::Empty).write(writer)?;
+             reset = true;
+         },
+
+         Request::RetrieveNetworkConfiguration(id) => {
+             Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3*4))).write(writer)?;
+             writer.write_all(&net_conf.mac.address)?;
+             writer.write_all(&net_conf.ip.address)?;
+             writer.write_all(&net_conf.subnet.address)?;
+             writer.write_all(&net_conf.gateway.address)?;
+         },
+
+         Request::RetrieveVersionInformation(id) => {
+             let version : &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
+             let len = version.len() as u8;
+             Response::Ok(id, Format::ValueOnly(Type::String(len))).write(writer)?;
+             writer.write_all(&version[..len as usize])?;
+         },
+
+         _ => {
+             Response::NotImplemented(id).write(writer)?;
+         }
+    };
+    Ok(reset)
+}
+
+fn transmit_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     let mut search = DeviceSearch::new();
     while writer.available() >= 12 {
         if let Some(device) = wire.search_next(&mut search, delay)? {
@@ -359,7 +398,7 @@ fn transmit_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, dela
     Ok(())
 }
 
-fn discover_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn discover_all_on_one_wire(wire: &mut OneWire, delay: &mut Delay, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     let mut search = DeviceSearch::new();
     while writer.available() >= ADDRESS_BYTES as usize {
         if let Some(device) = wire.search_next(&mut search, delay)? {
@@ -372,7 +411,7 @@ fn discover_all_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, dela
     Ok(())
 }
 
-fn prepare_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<u16, HandleError> {
+fn prepare_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<u16, HandleError> {
     let mut ms_to_sleep = 0_u16;
     while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
         let device = Device {
@@ -393,7 +432,7 @@ fn prepare_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>,
     Ok(ms_to_sleep)
 }
 
-fn transmit_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
+fn transmit_requested_on_one_wire(wire: &mut OneWire, delay: &mut Delay, reader: &mut sensor_common::Read, writer: &mut sensor_common::Write) -> Result<(), HandleError> {
     while reader.available() >= onewire::ADDRESS_BYTES as usize && writer.available() > 12 {
         let device = Device {
             address: [
@@ -419,7 +458,7 @@ fn transmit_requested_on_one_wire<T: InputPin + OutputPin>(wire: &mut OneWire<T>
     Ok(())
 }
 
-fn measure_retry_once_on_crc_error<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> f32 {
+fn measure_retry_once_on_crc_error(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> f32 {
     match measure(wire, device, delay) {
         Ok(value) => value,
         Err(HandleError::OneWire(onewire::Error::CrcMismatch(_, _))) => {
@@ -432,7 +471,7 @@ fn measure_retry_once_on_crc_error<T: InputPin + OutputPin>(wire: &mut OneWire<T
     }
 }
 
-fn prepare_measurement<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> Result<u16, HandleError> {
+fn prepare_measurement(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<u16, HandleError> {
     match device.family_code() {
         ds18b20::FAMILY_CODE => {
             Ok(DS18B20::new(device.clone())?.start_measurement(wire, delay)?)
@@ -441,7 +480,7 @@ fn prepare_measurement<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &
     }
 }
 
-fn measure<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
+fn measure(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {
     match device.family_code() {
         ds18b20::FAMILY_CODE => {
             Ok(DS18B20::new(device.clone())?.read_measurement(wire, delay)?)
@@ -451,7 +490,7 @@ fn measure<T: InputPin + OutputPin>(wire: &mut OneWire<T>, device: &Device, dela
 }
 
 #[derive(Debug)]
-enum HandleError {
+pub enum HandleError {
     Spi(spi::Error),
     Parsing(sensor_common::Error),
     OneWire(onewire::Error),
@@ -490,7 +529,7 @@ extern "C" fn default_handler() {
 
 const MAGIC_EEPROM_CRC_START : u8 = 0x42;
 
-struct NetworkConfiguration {
+pub struct NetworkConfiguration {
     mac: MacAddress,
     ip: IpAddress,
     subnet: IpAddress,
@@ -499,26 +538,31 @@ struct NetworkConfiguration {
 
 impl NetworkConfiguration {
     fn from<S: FullDuplex<u8, Error=spi::Error>>(eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<NetworkConfiguration, HandleError> {
+        let mut configuration = NetworkConfiguration::default();
+        configuration.load(eeprom, spi, delay)?;
+        Ok(configuration)
+    }
+
+    pub fn load(&mut self, eeprom: &mut DS93C46, spi: &mut FullDuplex<u8, Error=spi::Error>, delay: &mut DelayMs<u16>) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3*4 + 2];
         eeprom.read(spi, delay, 0x00, &mut buf)?;
         if buf[0] != MAGIC_EEPROM_CRC_START {
             Err(HandleError::NotMagicCrcAtStart)
         } else {
-            let crc = onewire::compute_partial_crc8(MAGIC_EEPROM_CRC_START, &buf[1..19]);
+            let crc = crc8(MAGIC_EEPROM_CRC_START, &buf[1..19]);
             if crc != buf[19] {
                 Err(HandleError::CrcError)
             } else {
-                Ok(NetworkConfiguration {
-                    mac:    MacAddress::new(buf[ 1], buf[ 2], buf[ 3], buf[ 4], buf[ 5], buf[ 6]),
-                    ip:      IpAddress::new(buf[ 7], buf[ 8], buf[ 9], buf[10]),
-                    subnet:  IpAddress::new(buf[11], buf[12], buf[13], buf[14]),
-                    gateway: IpAddress::new(buf[15], buf[16], buf[17], buf[18]),
-                })
+                self.mac    .address.copy_from_slice(&buf[ 1.. 7]);
+                self.ip     .address.copy_from_slice(&buf[ 7..11]);
+                self.subnet .address.copy_from_slice(&buf[11..15]);
+                self.gateway.address.copy_from_slice(&buf[15..19]);
+                Ok(())
             }
         }
     }
 
-    fn write<S: FullDuplex<u8, Error=spi::Error>>(&self, eeprom: &mut DS93C46, spi: &mut S, delay: &mut DelayMs<u16>) -> Result<(), HandleError> {
+    fn write(&self, eeprom: &mut DS93C46, spi: &mut FullDuplex<u8, Error=spi::Error>, delay: &mut DelayMs<u16>) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3*4 + 2];
         buf[0] = MAGIC_EEPROM_CRC_START;
         buf[1..7].copy_from_slice(&self.mac.address);
