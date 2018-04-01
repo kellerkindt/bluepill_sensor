@@ -169,52 +169,6 @@ fn main() {
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
-    /*
-
-    let mut configuration = match NetworkConfiguration::from(&mut ds93c46, &mut spi, &mut delay) {
-        Ok(configuration) => {
-            /*
-            loop {
-                delay.delay_ms(500_u16);
-                if led.is_low() {
-                    led.set_high();
-                } else {
-                    led.set_low();
-                }
-            }*/
-            configuration
-        },
-        Err(e) => {
-            let conf = NetworkConfiguration::default();
-            let result = conf.write(&mut ds93c46, &mut spi, &mut delay);
-            if result.is_err() {
-                loop {
-                    delay.delay_ms(1500_u16);
-                    if led.is_low() {
-                        led.set_high();
-                    } else {
-                        led.set_low();
-                    }
-                }
-            }
-            if let HandleError::CrcError = e {
-                loop {
-                    delay.delay_ms(2000_u16);
-                    if led.is_low() {
-                        led.set_high();
-                    } else {
-                        led.set_low();
-                    }
-                }
-            }
-            conf
-        }
-    };
-
-
-
-*/
-
     let mut wire = OneWire::new(&mut one, false);
 
     let mut platform = Platform {
@@ -539,7 +493,7 @@ extern "C" fn default_handler() {
     // asm::bkpt();
 }
 
-const MAGIC_EEPROM_CRC_START : u8 = 0x48;
+const MAGIC_EEPROM_CRC_START : u8 = 0x42;
 
 pub struct NetworkConfiguration {
     mac: MacAddress,
