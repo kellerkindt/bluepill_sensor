@@ -11,14 +11,14 @@
 # will likely look very different (and much more reasonable)
 
 [package]
-name = "hebeanlage"
-version = "0.3.1"
-#authors = ["Jorge Aparicio <jorge@japaric.io>"]
-#description = "A template for building applications for ARM Cortex-M microcontrollers"
-#keywords = ["arm", "cortex-m", "template"]
-#categories = ["embedded", "no-std"]
-#license = "MIT OR Apache-2.0"
-# repository = "https://github.com/japaric/cortex-m-quickstart"
+name = "bluepill_sensor"
+version = "0.3.2"
+authors = ["Michael Watzko <michael@watzko.de>"]
+description = "Stm32f103/Bluepill with W5500 ethernet chip, OneWire interface and sensor_common communication"
+keywords = ["arm", "cortex-m", "onewire", "ethernet"]
+categories = ["embedded", "no-std"]
+license = "MIT OR Apache-2.0"
+repository = "https://git.tallbyte.com/rust/bluepill_sensor"
 
 [profile.dev]
 codegen-units = 1
