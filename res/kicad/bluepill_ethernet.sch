@@ -186,6 +186,8 @@ Connection ~ 4550 5850
 Wire Wire Line
 	5600 1200 5600 1500
 Wire Wire Line
+	3050 900  2450 900 
+Wire Wire Line
 	3050 900  3750 900 
 Wire Wire Line
 	4300 900  4300 2350
@@ -396,6 +398,24 @@ Wire Wire Line
 Connection ~ 4300 2350
 Wire Wire Line
 	4300 2350 4300 2550
+$Comp
+L switches:SW_Push SW?
+U 1 1 5ADFA2DD
+P 2450 2500
+F 0 "SW?" V 2404 2648 50  0000 L CNN
+F 1 "SW_Push" V 2495 2648 50  0000 L CNN
+F 2 "" H 2450 2700 50  0001 C CNN
+F 3 "" H 2450 2700 50  0001 C CNN
+	1    2450 2500
+	0    1    1    0   
+$EndComp
 Wire Wire Line
-	2150 900  3050 900 
+	2550 2950 2450 2950
+Wire Wire Line
+	2450 2950 2450 2700
+Wire Wire Line
+	2450 2300 2450 900 
+Connection ~ 2450 900 
+Wire Wire Line
+	2450 900  2150 900 
 $EndSCHEMATC
