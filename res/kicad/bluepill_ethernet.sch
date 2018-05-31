@@ -399,12 +399,12 @@ Connection ~ 4300 2350
 Wire Wire Line
 	4300 2350 4300 2550
 $Comp
-L switches:SW_Push SW?
+L switches:SW_Push SW1
 U 1 1 5ADFA2DD
 P 2450 2500
-F 0 "SW?" V 2404 2648 50  0000 L CNN
+F 0 "SW1" V 2404 2648 50  0000 L CNN
 F 1 "SW_Push" V 2495 2648 50  0000 L CNN
-F 2 "" H 2450 2700 50  0001 C CNN
+F 2 "Buttons_Switches_THT:SW_PUSH_6mm" H 2450 2700 50  0001 C CNN
 F 3 "" H 2450 2700 50  0001 C CNN
 	1    2450 2500
 	0    1    1    0   
@@ -418,4 +418,156 @@ Wire Wire Line
 Connection ~ 2450 900 
 Wire Wire Line
 	2450 900  2150 900 
+$Comp
+L connectors:HEADER-1x20 J1
+U 1 1 5B103221
+P 4450 3500
+F 0 "J1" H 4578 3536 60  0000 L CNB
+F 1 "HEADER-1x20" H 4578 3445 40  0000 L CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 4450 3500 60  0001 C CNN
+F 3 "" H 4450 3500 60  0001 C CNN
+F 4 "-" H 4400 4650 40  0001 L BNN "Part"
+F 5 "Connector" H 4400 4750 40  0001 L BNN "Family"
+	1    4450 3500
+	1    0    0    -1  
+$EndComp
+Connection ~ 4300 2550
+Connection ~ 4300 2650
+Connection ~ 4300 2750
+$Comp
+L device:R R3
+U 1 1 5B105160
+P 3600 2850
+F 0 "R3" V 3680 2850 50  0000 C CNN
+F 1 "R" V 3600 2850 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3530 2850 50  0001 C CNN
+F 3 "" H 3600 2850 50  0001 C CNN
+	1    3600 2850
+	1    0    0    -1  
+$EndComp
+$Comp
+L device:R R2
+U 1 1 5B105A17
+P 3500 2850
+F 0 "R2" V 3580 2850 50  0000 C CNN
+F 1 "R" V 3500 2850 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3430 2850 50  0001 C CNN
+F 3 "" H 3500 2850 50  0001 C CNN
+	1    3500 2850
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3600 3050 3600 3000
+Wire Wire Line
+	3500 3150 3500 3000
+Wire Wire Line
+	4300 2550 3600 2550
+Wire Wire Line
+	3600 2550 3600 2700
+Wire Wire Line
+	3500 2700 3500 2550
+Wire Wire Line
+	3500 2550 3600 2550
+Connection ~ 3600 2550
+Wire Wire Line
+	3600 3050 4300 3050
+Connection ~ 4300 3050
+Wire Wire Line
+	3500 3150 4300 3150
+Connection ~ 4300 3150
+$Comp
+L device:LED D1
+U 1 1 5B11D9D9
+P 1100 4350
+F 0 "D1" V 1138 4233 50  0000 R CNN
+F 1 "LED" V 1047 4233 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 1100 4350 50  0001 C CNN
+F 3 "" H 1100 4350 50  0001 C CNN
+	1    1100 4350
+	0    -1   -1   0   
+$EndComp
+$Comp
+L device:LED D2
+U 1 1 5B11DDF6
+P 1350 4350
+F 0 "D2" V 1388 4233 50  0000 R CNN
+F 1 "LED" V 1297 4233 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 1350 4350 50  0001 C CNN
+F 3 "" H 1350 4350 50  0001 C CNN
+	1    1350 4350
+	0    -1   -1   0   
+$EndComp
+$Comp
+L device:LED D3
+U 1 1 5B11DE60
+P 1550 4350
+F 0 "D3" V 1588 4233 50  0000 R CNN
+F 1 "LED" V 1497 4233 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 1550 4350 50  0001 C CNN
+F 3 "" H 1550 4350 50  0001 C CNN
+	1    1550 4350
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	2550 3050 1100 3050
+Wire Wire Line
+	1100 3050 1100 4200
+Wire Wire Line
+	2550 3150 1350 3150
+Wire Wire Line
+	1350 3150 1350 4200
+Wire Wire Line
+	2550 3250 1550 3250
+Wire Wire Line
+	1550 3250 1550 4200
+$Comp
+L device:R R4
+U 1 1 5B129B3F
+P 1100 4650
+F 0 "R4" V 1180 4650 50  0000 C CNN
+F 1 "R" V 1100 4650 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 1030 4650 50  0001 C CNN
+F 3 "" H 1100 4650 50  0001 C CNN
+	1    1100 4650
+	1    0    0    -1  
+$EndComp
+$Comp
+L device:R R5
+U 1 1 5B129C2D
+P 1350 4650
+F 0 "R5" V 1430 4650 50  0000 C CNN
+F 1 "R" V 1350 4650 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 1280 4650 50  0001 C CNN
+F 3 "" H 1350 4650 50  0001 C CNN
+	1    1350 4650
+	1    0    0    -1  
+$EndComp
+$Comp
+L device:R R6
+U 1 1 5B129C71
+P 1550 4650
+F 0 "R6" V 1630 4650 50  0000 C CNN
+F 1 "R" V 1550 4650 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 1480 4650 50  0001 C CNN
+F 3 "" H 1550 4650 50  0001 C CNN
+	1    1550 4650
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2550 4550 2550 5850
+Wire Wire Line
+	2550 5850 1550 5850
+Wire Wire Line
+	1100 5850 1100 4800
+Connection ~ 2550 4550
+Wire Wire Line
+	1350 4800 1350 5850
+Connection ~ 1350 5850
+Wire Wire Line
+	1350 5850 1100 5850
+Wire Wire Line
+	1550 4800 1550 5850
+Connection ~ 1550 5850
+Wire Wire Line
+	1550 5850 1350 5850
 $EndSCHEMATC

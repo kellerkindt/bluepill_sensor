@@ -5,4 +5,5 @@
   (lib (name 93c46)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/93c46.lib)(options "")(descr ""))
   (lib (name WIZnet_W5500_MagJack-cache)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/WIZnet_W5500_MagJack-cache.lib)(options "")(descr ""))
   (lib (name WIZ850io)(type Legacy)(uri /share/home/michael/projects/kicad.libraries/WIZ850io.lib)(options "")(descr ""))
+  (lib (name connectors)(type Legacy)(uri /share/data/Projekte/rust.arm/bluepill_sensor/res/kicad.libs/connectors.lib)(options "")(descr ""))
 )
