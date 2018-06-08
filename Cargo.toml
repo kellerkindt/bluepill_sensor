@@ -12,7 +12,7 @@
 
 [package]
 name = "bluepill_sensor"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Michael Watzko <michael@watzko.de>"]
 description = "Stm32f103/Bluepill with W5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
@@ -30,11 +30,20 @@ debug = false
 
 [dependencies]
 vcell = "0.1.0"
-bare-metal = "0.1.1"
-embedded-hal = "0.1.2"
-stm32f103xx = "0.8.0"
+bare-metal = "0.2.0"
+cortex-m = "0.5.2"
+embedded-hal = "0.2.1"
 byteorder = { version = "1.2.1", default-features = false }
 nb = "0.1.1"
+panic-abort = "0.2.0"
+
+[dependencies.stm32f103xx]
+version = "0.10.0"
+features = ["rt"]
+
+[dependencies.cortex-m-rt]
+version = "0.5.1"
+
 
 
 [dependencies.w5500]
@@ -50,20 +59,9 @@ version = "0.1.3"
 path = "../pcd8544"
 
 [dependencies.sensor_common]
-version = "*"
 path = "../sensor_common"
 
 [dependencies.stm32f103xx-hal]
 version = "0.1.0"
 path = "../stm32f103xx-hal"
-
-[dependencies.cortex-m]
-version = "0.4.3"
-
-[dependencies.cortex-m-rt]
-version = "0.3.12"
-features = ["abort-on-panic"]
-
-[dependencies.cortex-m-semihosting]
-version = "0.2.0"
 

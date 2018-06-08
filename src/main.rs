@@ -1,15 +1,14 @@
-//! Prints "Hello, world!" on the OpenOCD console using semihosting
-//!
-//! ---
 #![feature(core_intrinsics)]
 #![feature(lang_items)]
 #![feature(used)]
 #![no_std]
+#![no_main]
 
 
 extern crate cortex_m;
+#[macro_use(entry, exception)]
 extern crate cortex_m_rt;
-extern crate cortex_m_semihosting;
+extern crate panic_abort;
 
 extern crate stm32f103xx;
 extern crate stm32f103xx_hal;
@@ -53,7 +52,6 @@ use core::fmt::Write;
 use core::result::*;
 
 use cortex_m::asm;
-use self::cortex_m_semihosting::hio;
 
 use onewire::*;
 use onewire::compute_partial_crc8 as crc8;
@@ -67,43 +65,32 @@ use byteorder::NetworkEndian;
 use ds93c46::*;
 use platform::*;
 
-#[cfg(debug_assertions)]
-fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(f: F) {
-    /*
-    static mut STDOUT : Option<hio::HStdout> = None;
-    unsafe {
-        if STDOUT.is_none() {
-            STDOUT = match hio::hstdout() {
-                Ok(stdout) => Some(stdout),
-                Err(_) => None
-            };
-        }
-        if let Some(ref mut stdout) = STDOUT {
-            f(stdout);
-        }
-    }
-    */
+
+entry!(main);
+
+// define the hard fault handler
+exception!(HardFault, hard_fault);
+
+fn hard_fault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
+    panic!("HardFault at {:#?}", ef);
 }
 
-#[cfg(not(debug_assertions))]
-fn stdout<A, F: FnOnce(&mut hio::HStdout) -> A>(_f: F) {
-    // do nothing
+// define the default exception handler
+exception!(*, default_handler);
+
+fn default_handler(irqn: i16) {
+    panic!("Unhandled exception (IRQn = {})", irqn);
 }
 
-fn main() {
-
-    stdout(|out| writeln!(out, "Hello World!"));
-
+pub fn main() -> ! {
     let mut cp = cortex_m::Peripherals::take().unwrap();
     let mut peripherals = stm32f103xx::Peripherals::take().unwrap();
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
 
-
     let mut speed = 500_u16;
 
-    // rcc.cfgr = rcc.cfgr.sysclk(stm32f103xx_hal::time::Hertz(7_200_000_u32));
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
 
@@ -112,7 +99,7 @@ fn main() {
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
-    let mut one : PCx<Output<OpenDrain>> = gpioc.pc15.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
+    let mut one = gpioc.pc15.into_open_drain_output(&mut gpioc.crh).downgrade();//.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
 
     let mut pcd_gnd   = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
@@ -189,7 +176,7 @@ fn main() {
     if platform.load_network_configuration().is_err() {
         for _ in 0..4 {
             platform.delay.delay_ms(1000_u16);
-            if led.is_low() {
+            if led.is_set_low() {
                 led.set_high();
             } else {
                 led.set_low();
@@ -205,7 +192,7 @@ fn main() {
 
     loop {
         if tick % 100 == 0 {
-            if led.is_low() {
+            if led.is_set_low() {
                 led.set_high();
             } else {
                 led.set_low();
@@ -483,15 +470,6 @@ impl From<onewire::Error> for HandleError {
     }
 }
 
-
-// As we are not using interrupts, we just register a dummy catch all handler
-#[link_section = ".vector_table.interrupts"]
-#[used]
-static INTERRUPTS: [extern "C" fn(); 240] = [default_handler; 240];
-
-extern "C" fn default_handler() {
-    // asm::bkpt();
-}
 
 const MAGIC_EEPROM_CRC_START : u8 = 0x42;
 
