@@ -18,6 +18,7 @@ extern crate byteorder;
 #[macro_use(block)]
 extern crate nb;
 
+extern crate am2302;
 extern crate onewire;
 extern crate pcd8544;
 extern crate sensor_common;
@@ -51,6 +52,7 @@ use core::result::*;
 
 use cortex_m::asm;
 
+use am2302::Am2302;
 use onewire::compute_partial_crc8 as crc8;
 use onewire::*;
 use pcd8544::*;
@@ -149,8 +151,11 @@ pub fn main() -> ! {
         &mut rcc.apb2,
     );
 
+    let mut am2302 = gpiob.pb9.into_open_drain_output(&mut gpiob.crh);
+
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
+    let mut am2302 = Am2302::new(&mut am2302);
 
     let mut wire = OneWire::new(&mut one, false);
 
@@ -167,6 +172,7 @@ pub fn main() -> ! {
         network_reset: &mut rs,
         network_config: NetworkConfiguration::default(),
 
+        humidity: &mut am2302,
         eeprom: &mut ds93c46,
 
         reset: &mut self_reset,
@@ -214,6 +220,7 @@ pub fn main() -> ! {
         tick += 1;
     }
 }
+
 fn handle_udp_requests(
     platform: &mut Platform,
     buffer: &mut [u8],
@@ -244,6 +251,7 @@ fn handle_udp_requests(
                 &mut platform.network_config,
                 platform.reset,
                 platform.eeprom,
+                platform.humidity,
                 platform.onewire,
                 platform.delay,
                 platform.spi,
@@ -275,9 +283,10 @@ fn handle_udp_requests_legacy(
     net_conf: &mut NetworkConfiguration,
     self_reset: &mut OutputPin,
     eeprom: &mut DS93C46,
+    am2302: &mut Am2302,
     wire: &mut OneWire,
     delay: &mut Delay,
-    spi: &mut FullDuplex<u8, Error = spi::Error>,
+    spi: &mut FullDuplex<u8, Error=spi::Error>,
     request_content_buffer: &[u8],
     writer: &mut ::sensor_common::Write,
 ) -> Result<bool, HandleError> {
@@ -288,6 +297,28 @@ fn handle_udp_requests_legacy(
             Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
             transmit_all_on_one_wire(wire, delay, writer)?;
         }
+
+        Request::ReadSpecified(id, Bus::Custom(bus)) => {
+            match bus {
+                0x01 => { // am2302
+                    if let Ok(value) = am2302.read(delay) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut buffer = [0u8; 4];
+                        NetworkEndian::write_f32(&mut buffer[..], value.humidity);
+                        writer.write_all(&buffer[..]);
+                        NetworkEndian::write_f32(&mut buffer[..], value.temperature);
+                        writer.write_all(&buffer[..]);
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+
+                },
+                _ => {
+                    Response::NotImplemented(id).write(writer)?;
+                }
+            };
+        }
+
         Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
             Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
             discover_all_on_one_wire(wire, delay, writer)?;
@@ -479,6 +510,7 @@ fn measure(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32
 
 #[derive(Debug)]
 pub enum HandleError {
+    Unknown,
     Spi(spi::Error),
     Parsing(sensor_common::Error),
     OneWire(onewire::Error),
@@ -505,6 +537,12 @@ impl From<onewire::Error> for HandleError {
     }
 }
 
+impl From<()> for HandleError {
+    fn from(_: ()) -> Self {
+        HandleError::Unknown
+    }
+}
+
 const MAGIC_EEPROM_CRC_START: u8 = 0x42;
 
 pub struct NetworkConfiguration {
@@ -515,7 +553,7 @@ pub struct NetworkConfiguration {
 }
 
 impl NetworkConfiguration {
-    fn from<S: FullDuplex<u8, Error = spi::Error>>(
+    fn from<S: FullDuplex<u8, Error=spi::Error>>(
         eeprom: &mut DS93C46,
         spi: &mut S,
         delay: &mut DelayMs<u16>,
@@ -528,7 +566,7 @@ impl NetworkConfiguration {
     pub fn load(
         &mut self,
         eeprom: &mut DS93C46,
-        spi: &mut FullDuplex<u8, Error = spi::Error>,
+        spi: &mut FullDuplex<u8, Error=spi::Error>,
         delay: &mut DelayMs<u16>,
     ) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3 * 4 + 2];
@@ -552,7 +590,7 @@ impl NetworkConfiguration {
     fn write(
         &self,
         eeprom: &mut DS93C46,
-        spi: &mut FullDuplex<u8, Error = spi::Error>,
+        spi: &mut FullDuplex<u8, Error=spi::Error>,
         delay: &mut DelayMs<u16>,
     ) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3 * 4 + 2];

@@ -11,6 +11,8 @@ use embedded_hal::spi::FullDuplex;
 
 use NetworkConfiguration;
 
+use am2302::Am2302;
+
 use w5500::Interrupt;
 use w5500::IpAddress;
 use w5500::MacAddress;
@@ -37,6 +39,7 @@ pub struct Platform<'a, 'inner: 'a> {
     pub(super) network_reset: &'a mut OutputPin,
     pub(super) network_config: NetworkConfiguration,
 
+    pub(super) humidity: &'a mut Am2302<'inner>,
     pub(super) eeprom: &'a mut DS93C46<'inner>,
 
     pub(super) reset: &'a mut OutputPin,

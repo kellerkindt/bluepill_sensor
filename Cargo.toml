@@ -61,6 +61,9 @@ path = "../pcd8544"
 [dependencies.sensor_common]
 path = "../sensor_common"
 
+[dependencies.am2302]
+path = "../am2302"
+
 [dependencies.stm32f103xx-hal]
 version = "0.1.0"
 path = "../stm32f103xx-hal"
