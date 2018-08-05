@@ -18,12 +18,12 @@ extern crate byteorder;
 #[macro_use(block)]
 extern crate nb;
 
-extern crate am2302;
 extern crate onewire;
 extern crate pcd8544;
 extern crate sensor_common;
 extern crate w5500;
 
+mod am2302;
 mod ds93c46;
 mod platform;
 
@@ -98,6 +98,10 @@ pub fn main() -> ! {
     let mut gpiob = peripherals.GPIOB.split(&mut rcc.apb2);
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
+    let mut led_red = gpioa.pa1.into_push_pull_output(&mut gpioa.crl);
+    let mut led_yellow = gpioa.pa2.into_push_pull_output(&mut gpioa.crl);
+    let mut led_blue = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
+
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
     let mut one = gpioc
         .pc15
@@ -151,18 +155,21 @@ pub fn main() -> ! {
         &mut rcc.apb2,
     );
 
+    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, clocks);
+    // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
+    let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
+
     let mut am2302 = gpiob.pb9.into_open_drain_output(&mut gpiob.crh);
 
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
-    let mut am2302 = Am2302::new(&mut am2302);
+    let mut am2302 = Am2302::new(&mut am2302, &timer);
 
     let mut wire = OneWire::new(&mut one, false);
 
-    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, clocks);
 
     let mut platform = Platform {
-        information: DeviceInformation::new(&timer, cp.CPUID.base.read()),
+        information,
 
         delay: &mut delay,
         onewire: &mut wire,
@@ -204,7 +211,7 @@ pub fn main() -> ! {
             }
         }
 
-        match handle_udp_requests(&mut platform, &mut [0u8; 2048]) {
+        match handle_udp_requests(&mut platform, &mut [0u8; 2048], &mut led_red, &mut led_yellow, &mut led_blue) {
             Err(e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
@@ -224,6 +231,9 @@ pub fn main() -> ! {
 fn handle_udp_requests(
     platform: &mut Platform,
     buffer: &mut [u8],
+    led_red: &mut OutputPin,
+    led_yellow: &mut OutputPin,
+    led_blue: &mut OutputPin,
 ) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
@@ -257,6 +267,9 @@ fn handle_udp_requests(
                 platform.spi,
                 request_content_buffer,
                 writer,
+                led_red,
+                led_yellow,
+                led_blue,
             )?;
 
             available - writer.available()
@@ -289,6 +302,9 @@ fn handle_udp_requests_legacy(
     spi: &mut FullDuplex<u8, Error=spi::Error>,
     request_content_buffer: &[u8],
     writer: &mut ::sensor_common::Write,
+    led_red: &mut OutputPin,
+    led_yellow: &mut OutputPin,
+    led_blue: &mut OutputPin,
 ) -> Result<bool, HandleError> {
     let mut reset = false;
 
@@ -301,17 +317,33 @@ fn handle_udp_requests_legacy(
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
             match bus {
                 0x01 => { // am2302
-                    if let Ok(value) = am2302.read(delay) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut buffer = [0u8; 4];
-                        NetworkEndian::write_f32(&mut buffer[..], value.humidity);
-                        writer.write_all(&buffer[..]);
-                        NetworkEndian::write_f32(&mut buffer[..], value.temperature);
-                        writer.write_all(&buffer[..]);
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
+                    led_red.set_low();
+                    led_yellow.set_low();
+                    led_blue.set_low();
+                    match am2302.read() {
+                        Ok(value) => {
+                            Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                            let mut buffer = [0u8; 4];
+                            NetworkEndian::write_f32(&mut buffer[..], value.humidity);
+                            writer.write_all(&buffer[..]);
+                            NetworkEndian::write_f32(&mut buffer[..], value.temperature);
+                            writer.write_all(&buffer[..]);
+                        }
+                        Err(e) => {
+                            Response::NotAvailable(id).write(writer)?;
+                            match e {
+                                ::am2302::Error::Crc => led_red.set_high(),
+                                ::am2302::Error::NotHighWithin(time) => {
+                                    led_yellow.set_high();
+                                    writer.write_u8(time as u8)?;
+                                },
+                                ::am2302::Error::NotLowWithin(time) => {
+                                    led_blue.set_high();
+                                    writer.write_u8(time as u8)?;
+                                },
+                            }
+                        }
                     }
-
                 },
                 _ => {
                     Response::NotImplemented(id).write(writer)?;
