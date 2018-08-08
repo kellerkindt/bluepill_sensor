@@ -108,6 +108,7 @@ pub fn main() -> ! {
         .into_open_drain_output(&mut gpioc.crh)
         .downgrade(); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
+    /*
     let mut pcd_gnd = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
     let mut pcd_light = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
     let mut pcd_vcc = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
@@ -120,6 +121,7 @@ pub fn main() -> ! {
     pcd_gnd.set_low();
     pcd_light.set_high();
     pcd_vcc.set_high();
+    */
 
     let mut afio = peripherals.AFIO.constrain(&mut rcc.apb2);
 
@@ -159,11 +161,23 @@ pub fn main() -> ! {
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
 
-    let mut am2302 = gpiob.pb9.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_00 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
+    let mut am2302_01 = gpiob.pb4.into_open_drain_output(&mut gpiob.crl);
+    let mut am2302_02 = gpiob.pb3.into_open_drain_output(&mut gpiob.crl);
+    let mut am2302_03 = gpioa.pa15.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_04 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_05 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_06 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_07 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_08 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_09 = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_10 = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_11 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_12 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
+
 
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
-    let mut am2302 = Am2302::new(&mut am2302, &timer);
 
     let mut wire = OneWire::new(&mut one, false);
 
@@ -179,7 +193,21 @@ pub fn main() -> ! {
         network_reset: &mut rs,
         network_config: NetworkConfiguration::default(),
 
-        humidity: &mut am2302,
+        humidity: [
+            Am2302::new(&mut am2302_00, &timer),
+            Am2302::new(&mut am2302_01, &timer),
+            Am2302::new(&mut am2302_02, &timer),
+            Am2302::new(&mut am2302_03, &timer),
+            Am2302::new(&mut am2302_04, &timer),
+            Am2302::new(&mut am2302_05, &timer),
+            Am2302::new(&mut am2302_06, &timer),
+            Am2302::new(&mut am2302_07, &timer),
+            Am2302::new(&mut am2302_08, &timer),
+            Am2302::new(&mut am2302_09, &timer),
+            Am2302::new(&mut am2302_10, &timer),
+            Am2302::new(&mut am2302_11, &timer),
+            Am2302::new(&mut am2302_12, &timer),
+        ],
         eeprom: &mut ds93c46,
 
         reset: &mut self_reset,
@@ -261,7 +289,7 @@ fn handle_udp_requests(
                 &mut platform.network_config,
                 platform.reset,
                 platform.eeprom,
-                platform.humidity,
+                &mut platform.humidity,
                 platform.onewire,
                 platform.delay,
                 platform.spi,
@@ -296,7 +324,7 @@ fn handle_udp_requests_legacy(
     net_conf: &mut NetworkConfiguration,
     self_reset: &mut OutputPin,
     eeprom: &mut DS93C46,
-    am2302: &mut Am2302,
+    am2302: &mut [Am2302],
     wire: &mut OneWire,
     delay: &mut Delay,
     spi: &mut FullDuplex<u8, Error=spi::Error>,
@@ -315,40 +343,37 @@ fn handle_udp_requests_legacy(
         }
 
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
-            match bus {
-                0x01 => { // am2302
-                    led_red.set_low();
-                    led_yellow.set_low();
-                    led_blue.set_low();
-                    match am2302.read() {
-                        Ok(value) => {
-                            Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                            let mut buffer = [0u8; 4];
-                            NetworkEndian::write_f32(&mut buffer[..], value.humidity);
-                            writer.write_all(&buffer[..]);
-                            NetworkEndian::write_f32(&mut buffer[..], value.temperature);
-                            writer.write_all(&buffer[..]);
-                        }
-                        Err(e) => {
-                            Response::NotAvailable(id).write(writer)?;
-                            match e {
-                                ::am2302::Error::Crc => led_red.set_high(),
-                                ::am2302::Error::NotHighWithin(time) => {
-                                    led_yellow.set_high();
-                                    writer.write_u8(time as u8)?;
-                                },
-                                ::am2302::Error::NotLowWithin(time) => {
-                                    led_blue.set_high();
-                                    writer.write_u8(time as u8)?;
-                                },
-                            }
+            if (bus as usize) < am2302.len() {
+                led_red.set_low();
+                led_yellow.set_low();
+                led_blue.set_low();
+                match am2302[bus as usize].read() {
+                    Ok(value) => {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut buffer = [0u8; 4];
+                        NetworkEndian::write_f32(&mut buffer[..], value.humidity);
+                        writer.write_all(&buffer[..]);
+                        NetworkEndian::write_f32(&mut buffer[..], value.temperature);
+                        writer.write_all(&buffer[..]);
+                    }
+                    Err(e) => {
+                        Response::NotAvailable(id).write(writer)?;
+                        match e {
+                            ::am2302::Error::Crc => led_red.set_high(),
+                            ::am2302::Error::NotHighWithin(time) => {
+                                led_yellow.set_high();
+                                writer.write_u8(time as u8)?;
+                            },
+                            ::am2302::Error::NotLowWithin(time) => {
+                                led_blue.set_high();
+                                writer.write_u8(time as u8)?;
+                            },
                         }
                     }
-                },
-                _ => {
-                    Response::NotImplemented(id).write(writer)?;
                 }
-            };
+            } else {
+                Response::NotImplemented(id).write(writer)?;
+            }
         }
 
         Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
