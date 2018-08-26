@@ -128,6 +128,8 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
 pub struct DeviceInformation {
     frequency: Hertz,
     init: Instant,
+    init_last: u32,
+    uptime_offset: u64,
     cpuid: u32,
 }
 
@@ -136,6 +138,8 @@ impl DeviceInformation {
         DeviceInformation {
             frequency: timer.frequency(),
             init: timer.now(),
+            init_last: 0,
+            uptime_offset: 0,
             cpuid,
         }
     }
@@ -144,8 +148,15 @@ impl DeviceInformation {
         self.frequency
     }
 
-    pub fn uptime(&self) -> u32 {
-        self.init.elapsed()
+    pub fn update_uptime_offset(&mut self) {
+        let elapsed = self.init.elapsed();
+        let additional_offset = elapsed.wrapping_sub(self.init_last);
+        self.init_last = elapsed;
+        self.uptime_offset += additional_offset as u64;
+    }
+
+    pub fn uptime(&self) -> u64 {
+        self.uptime_offset + self.init.elapsed().wrapping_sub(self.init_last) as u64
     }
 
     pub fn cpu_id(&self) -> u32 {

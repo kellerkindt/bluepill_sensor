@@ -253,6 +253,7 @@ pub fn main() -> ! {
 
         // delay.delay_ms(100_u16);
         tick += 1;
+        platform.information.update_uptime_offset();
     }
 }
 
@@ -343,7 +344,8 @@ fn handle_udp_requests_legacy(
         }
 
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
-            if (bus as usize) < am2302.len() {
+            // somehow 1, 2, 3 are not working atm
+            if (bus as usize) < am2302.len() && (bus < 1 || bus > 3) {
                 led_red.set_low();
                 led_yellow.set_low();
                 led_blue.set_low();
@@ -404,15 +406,17 @@ fn handle_udp_requests_legacy(
         }
 
         Request::RetrieveDeviceInformation(id) => {
-            let mut buffer = [0u8; 2 * 4 + 40];
+            let mut buffer = [0u8; 4 + 8 + 6];
             Response::Ok(id, Format::ValueOnly(Type::Bytes(buffer.len() as u8))).write(writer)?;
             NetworkEndian::write_u32(&mut buffer[0..], info.frequency().0);
-            NetworkEndian::write_u32(&mut buffer[4..], info.uptime());
+            NetworkEndian::write_u64(&mut buffer[4..], info.uptime());
 
-            buffer[5] = info.cpu_implementer();
-            buffer[6] = info.cpu_variant();
-            NetworkEndian::write_u16(&mut buffer[7..], info.cpu_partnumber());
-            buffer[9] = info.cpu_revision();
+            buffer[12] = info.cpu_implementer();
+            buffer[13] = info.cpu_variant();
+            NetworkEndian::write_u16(&mut buffer[14..], info.cpu_partnumber());
+            buffer[16] = info.cpu_revision();
+            buffer[17] = MAGIC_EEPROM_CRC_START;
+
 
             writer.write_all(&buffer)?;
         }
