@@ -39,7 +39,7 @@ pub struct Platform<'a, 'inner: 'a> {
     pub(super) network_reset: &'a mut OutputPin,
     pub(super) network_config: NetworkConfiguration,
 
-    pub(super) humidity: [Am2302<'inner>; 13],
+    pub(super) humidity: [Am2302<'inner>; 9],
     pub(super) eeprom: &'a mut DS93C46<'inner>,
 
     pub(super) reset: &'a mut OutputPin,

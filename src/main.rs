@@ -161,19 +161,18 @@ pub fn main() -> ! {
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
 
-    let mut am2302_00 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
-    let mut am2302_01 = gpiob.pb4.into_open_drain_output(&mut gpiob.crl);
-    let mut am2302_02 = gpiob.pb3.into_open_drain_output(&mut gpiob.crl);
-    let mut am2302_03 = gpioa.pa15.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_04 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_05 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_06 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_07 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_08 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_09 = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
-    let mut am2302_10 = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
-    let mut am2302_11 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
-    let mut am2302_12 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
+    // TODO
+    let mut onewire_2 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
+
+    let mut am2302_00 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_01 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_02 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_03 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_04 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
+    let mut am2302_05 = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_06 = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_07 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
+    let mut am2302_08 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
 
 
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
@@ -203,10 +202,6 @@ pub fn main() -> ! {
             Am2302::new(&mut am2302_06, &timer),
             Am2302::new(&mut am2302_07, &timer),
             Am2302::new(&mut am2302_08, &timer),
-            Am2302::new(&mut am2302_09, &timer),
-            Am2302::new(&mut am2302_10, &timer),
-            Am2302::new(&mut am2302_11, &timer),
-            Am2302::new(&mut am2302_12, &timer),
         ],
         eeprom: &mut ds93c46,
 
@@ -345,7 +340,7 @@ fn handle_udp_requests_legacy(
 
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
             // somehow 1, 2, 3 are not working atm
-            if (bus as usize) < am2302.len() && (bus < 1 || bus > 3) {
+            if (bus as usize) < am2302.len() {
                 led_red.set_low();
                 led_yellow.set_low();
                 led_blue.set_low();
