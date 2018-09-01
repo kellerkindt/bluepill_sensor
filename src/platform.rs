@@ -46,6 +46,13 @@ pub struct Platform<'a, 'inner: 'a> {
 }
 
 impl<'a, 'inner: 'a> Platform<'a, 'inner> {
+    pub fn save_network_configuration(&mut self) -> Result<(), ()> {
+        match self.network_config.write(self.eeprom, self.spi, self.delay) {
+            Err(_) => Err(()),
+            Ok(_) => Ok(())
+        }
+    }
+
     pub fn load_network_configuration(&mut self) -> Result<(), ()> {
         match self.network_config.load(self.eeprom, self.spi, self.delay) {
             Err(_) => Err(()),

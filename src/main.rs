@@ -166,6 +166,9 @@ pub fn main() -> ! {
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
 
+    let mut config_reset = gpioa.pa0.into_open_drain_output(&mut gpioa.crl);
+    config_reset.set_low();
+
     // TODO
     let mut onewire_2 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
     let mut onewire_2 = OneWire::new(&mut onewire_2, false);
@@ -251,6 +254,23 @@ pub fn main() -> ! {
                 // writeln!(display, "{}:{}", ip, port);
             },
         };
+
+        {
+            let probe_start = timer.now();
+            while config_reset.is_high() {
+                // pressed for longer than 3s?
+                if (probe_start.elapsed() / timer.frequency().0) > 3 {
+                    (*platform.network_configuration_mut()) = NetworkConfiguration::default();
+                    platform.save_network_configuration();
+                    while config_reset.is_high() {
+                        led_blue.set_high();
+                        led_yellow.set_high();
+                        led_red.set_high();
+                    }
+                    platform.reset();
+                }
+            }
+        }
 
         // delay.delay_ms(100_u16);
         tick += 1;
