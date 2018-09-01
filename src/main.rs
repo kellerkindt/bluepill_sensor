@@ -88,7 +88,6 @@ pub fn main() -> ! {
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
 
-
     let mut speed = 500_u16;
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
@@ -157,15 +156,22 @@ pub fn main() -> ! {
         &mut rcc.apb2,
     );
 
+
+
+    // DWT does not count without a debugger connected and without
+    // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
+    unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
     let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, clocks);
+
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
 
     // TODO
     let mut onewire_2 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
+    let mut onewire_2 = OneWire::new(&mut onewire_2, false);
 
-    let mut am2302_00 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_01 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
+    // let mut am2302_00 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
+    // let mut am2302_01 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_02 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_03 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_04 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
@@ -185,7 +191,7 @@ pub fn main() -> ! {
         information,
 
         delay: &mut delay,
-        onewire: &mut wire,
+        onewire: &mut [&mut wire, &mut onewire_2],
         spi: &mut spi,
 
         network: &mut w5500,
@@ -193,8 +199,8 @@ pub fn main() -> ! {
         network_config: NetworkConfiguration::default(),
 
         humidity: [
-            Am2302::new(&mut am2302_00, &timer),
-            Am2302::new(&mut am2302_01, &timer),
+            // Am2302::new(&mut am2302_00, &timer),
+            // Am2302::new(&mut am2302_01, &timer),
             Am2302::new(&mut am2302_02, &timer),
             Am2302::new(&mut am2302_03, &timer),
             Am2302::new(&mut am2302_04, &timer),
@@ -321,7 +327,7 @@ fn handle_udp_requests_legacy(
     self_reset: &mut OutputPin,
     eeprom: &mut DS93C46,
     am2302: &mut [Am2302],
-    wire: &mut OneWire,
+    wire: &mut [&mut OneWire],
     delay: &mut Delay,
     spi: &mut FullDuplex<u8, Error=spi::Error>,
     request_content_buffer: &[u8],
@@ -439,45 +445,51 @@ fn handle_udp_requests_legacy(
 }
 
 fn transmit_all_on_one_wire(
-    wire: &mut OneWire,
+    wire: &mut [&mut OneWire],
     delay: &mut Delay,
     writer: &mut sensor_common::Write,
 ) -> Result<(), HandleError> {
-    let mut search = DeviceSearch::new();
-    while writer.available() >= 12 {
-        if let Some(device) = wire.search_next(&mut search, delay)? {
-            let value = measure_retry_once_on_crc_error(wire, &device, delay);
+    'outer: for wire in wire.iter_mut() {
+        let mut search = DeviceSearch::new();
+        while writer.available() >= 12 {
+            if let Some(device) = wire.search_next(&mut search, delay)? {
+                let value = measure_retry_once_on_crc_error(*wire, &device, delay);
 
-            let mut buffer = [0u8; 4];
-            NetworkEndian::write_f32(&mut buffer[..], value);
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(&mut buffer[..], value);
 
-            writer.write_all(&device.address)?;
-            writer.write_all(&buffer)?;
-        } else {
-            return Ok(());
+                writer.write_all(&device.address)?;
+                writer.write_all(&buffer)?;
+            } else {
+                // no devices found, search on next bus
+                continue 'outer;
+            }
         }
     }
     Ok(())
 }
 
 fn discover_all_on_one_wire(
-    wire: &mut OneWire,
+    wire: &mut [&mut OneWire],
     delay: &mut Delay,
     writer: &mut sensor_common::Write,
 ) -> Result<(), HandleError> {
-    let mut search = DeviceSearch::new();
-    while writer.available() >= ADDRESS_BYTES as usize {
-        if let Some(device) = wire.search_next(&mut search, delay)? {
-            writer.write_all(&device.address)?;
-        } else {
-            return Ok(());
+    for wire in wire.iter_mut() {
+        let mut search = DeviceSearch::new();
+        while writer.available() >= ADDRESS_BYTES as usize {
+            if let Ok(Some(device)) = wire.search_next(&mut search, delay) {
+                writer.write_all(&device.address)?;
+            } else {
+                // non left on this bus, try next
+                break
+            }
         }
     }
     Ok(())
 }
 
 fn prepare_requested_on_one_wire(
-    wire: &mut OneWire,
+    wire: &mut [&mut OneWire],
     delay: &mut Delay,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
@@ -497,13 +509,16 @@ fn prepare_requested_on_one_wire(
             ],
         };
 
-        ms_to_sleep = prepare_measurement(wire, &device, delay)?.max(ms_to_sleep);
+        for wire in wire.iter_mut() {
+            ms_to_sleep = prepare_measurement(*wire, &device, delay)?.max(ms_to_sleep);
+        }
+
     }
     Ok(ms_to_sleep)
 }
 
 fn transmit_requested_on_one_wire(
-    wire: &mut OneWire,
+    wire: &mut [&mut OneWire],
     delay: &mut Delay,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
@@ -522,7 +537,14 @@ fn transmit_requested_on_one_wire(
             ],
         };
 
-        let value = measure_retry_once_on_crc_error(wire, &device, delay);
+        let mut value = ::core::f32::NAN;
+        for wire in wire.iter_mut() {
+            value = measure_retry_once_on_crc_error(*wire, &device, delay);
+            if !value.is_nan() {
+                break;
+            }
+        }
+
 
         let mut buffer = [0u8; 4];
         NetworkEndian::write_f32(&mut buffer[..], value);

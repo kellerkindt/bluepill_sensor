@@ -32,14 +32,14 @@ pub struct Platform<'a, 'inner: 'a> {
     // peripherie
     pub(super) delay: &'a mut Delay,
 
-    pub(super) onewire: &'a mut OneWire<'inner>,
+    pub(super) onewire: &'a mut [&'a mut OneWire<'inner>],
     pub(super) spi: &'a mut FullDuplex<u8, Error = spi::Error>,
 
     pub(super) network: &'a mut W5500<'inner>,
     pub(super) network_reset: &'a mut OutputPin,
     pub(super) network_config: NetworkConfiguration,
 
-    pub(super) humidity: [Am2302<'inner>; 9],
+    pub(super) humidity: [Am2302<'a>; 7],
     pub(super) eeprom: &'a mut DS93C46<'inner>,
 
     pub(super) reset: &'a mut OutputPin,
@@ -76,8 +76,13 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     }
 
     pub fn init_onewire(&mut self) -> Result<(), onewire::Error> {
-        self.onewire.reset(self.delay)?;
-        Ok(())
+        let mut result = Ok(());
+        for w in self.onewire.iter_mut() {
+            if let Err(e) = w.reset(self.delay) {
+                result = Err(e);
+            }
+        }
+        result
     }
 
     pub fn receive_udp(
