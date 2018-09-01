@@ -510,7 +510,9 @@ fn prepare_requested_on_one_wire(
         };
 
         for wire in wire.iter_mut() {
-            ms_to_sleep = prepare_measurement(*wire, &device, delay)?.max(ms_to_sleep);
+            if let Ok(min_ms_to_sleep) = prepare_measurement(*wire, &device, delay) {
+                ms_to_sleep = min_ms_to_sleep.max(ms_to_sleep);
+            }
         }
 
     }
