@@ -301,7 +301,7 @@ fn handle_udp_requests(
             reset = match request {
                 Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
                     Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
-                    platform.discover_onewire_devices::<sensor_common::Error, _>(|device| {
+                    platform.onewire_discover_devices::<sensor_common::Error, _>(|device| {
                         if writer.available() >= device.address.len() {
                             writer.write_all(&device.address)?;
                         }
@@ -409,10 +409,7 @@ fn handle_udp_requests_legacy(
             }
         }
 
-        Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
-            Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
-            discover_all_on_one_wire(wire, delay, writer)?;
-        }
+
         Request::ReadSpecified(id, Bus::OneWire) => {
             Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
             let ms_till_ready =
@@ -493,25 +490,6 @@ fn transmit_all_on_one_wire(
             } else {
                 // no devices found, search on next bus
                 continue 'outer;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn discover_all_on_one_wire(
-    wire: &mut [&mut OneWire],
-    delay: &mut Delay,
-    writer: &mut sensor_common::Write,
-) -> Result<(), HandleError> {
-    for wire in wire.iter_mut() {
-        let mut search = DeviceSearch::new();
-        while writer.available() >= ADDRESS_BYTES as usize {
-            if let Ok(Some(device)) = wire.search_next(&mut search, delay) {
-                writer.write_all(&device.address)?;
-            } else {
-                // non left on this bus, try next
-                break;
             }
         }
     }

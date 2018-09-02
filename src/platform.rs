@@ -123,7 +123,7 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     }
 
     /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.
-    pub fn discover_onewire_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(&mut self, mut f: F) -> Result<(), E> {
+    pub fn onewire_discover_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(&mut self, mut f: F) -> Result<(), E> {
         'outer: for wire in self.onewire.iter_mut() {
             let mut search = onewire::DeviceSearch::new();
             while let Ok(Some(device)) = wire.search_next(&mut search, self.delay) {
