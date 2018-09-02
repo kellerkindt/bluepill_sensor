@@ -3,7 +3,7 @@
 unset CARGO_INCREMENTAL
 BIN="target/thumbv7m-none-eabi/release/bluepill_sensor"
 
-rustup run nightly xargo build --release \
+rustup run nightly xargo build --release --target=thumbv7m-none-eabi \
  && sudo openocd \
 	-f interface/stlink-v2.cfg \
 	-f target/stm32f1x.cfg \
