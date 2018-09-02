@@ -1,11 +1,9 @@
-
 use core::f32;
 
-use embedded_hal::digital::OutputPin;
 use embedded_hal::digital::InputPin;
+use embedded_hal::digital::OutputPin;
 
 use stm32f103xx_hal::time::MonoTimer;
-
 
 pub trait OpenDrainOutput: OutputPin + InputPin {}
 impl<P: OutputPin + InputPin> OpenDrainOutput for P {}
@@ -18,10 +16,7 @@ pub struct Am2302<'a> {
 impl<'a> Am2302<'a> {
     pub fn new(pin: &'a mut OpenDrainOutput, timer: &'a MonoTimer) -> Am2302<'a> {
         pin.set_high();
-        Am2302 {
-            pin,
-            timer,
-        }
+        Am2302 { pin, timer }
     }
 
     pub fn read(&mut self) -> Result<ReadValue, Error> {
@@ -52,9 +47,7 @@ impl<'a> Am2302<'a> {
         //delay.delay_us(5_000);
         let start = self.timer.now();
         // pull low 'beyond at least 1~10ms'
-        while start.elapsed() < 5_000 as u32 * (self.timer.frequency().0 / 1_000_000) {
-
-        }
+        while start.elapsed() < 5_000 as u32 * (self.timer.frequency().0 / 1_000_000) {}
         self.pin.set_high();
 
         // sensor pulls down after 20-40us
@@ -65,7 +58,6 @@ impl<'a> Am2302<'a> {
 
         // sensor should pull low after 80us
         self.expect_low_within(85)?;
-
 
         let mut buffer = [0u8; 5];
 
