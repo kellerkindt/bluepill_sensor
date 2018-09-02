@@ -5,7 +5,6 @@ use stm32f103xx_hal::time::Instant;
 use stm32f103xx_hal::time::MonoTimer;
 
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::blocking::delay::DelayUs;
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::FullDuplex;
 
@@ -15,7 +14,6 @@ use am2302::Am2302;
 
 use w5500::Interrupt;
 use w5500::IpAddress;
-use w5500::MacAddress;
 use w5500::Socket;
 use w5500::W5500;
 

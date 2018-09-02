@@ -1,16 +1,10 @@
 
-use stm32f103xx_hal;
-
 use core::f32;
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal::digital::InputPin;
-use embedded_hal::blocking::delay::DelayUs;
-use embedded_hal::timer::CountDown;
 
-use stm32f103xx_hal::time::Instant;
 use stm32f103xx_hal::time::MonoTimer;
-use stm32f103xx_hal::time::Hertz;
 
 
 pub trait OpenDrainOutput: OutputPin + InputPin {}

@@ -29,10 +29,11 @@ impl<'a> DS93C46<'a> {
         delay: &mut DelayMs<u16>,
     ) -> Result<(), E> {
         self.select_chip();
-        let result = DS93C46::write_byte(spi, 0x02);
+        let result_1 = DS93C46::write_byte(spi, 0x02);
         let result = DS93C46::write_byte(spi, 0x00);
         self.deselect_chip();
         delay.delay_ms(10);
+        result_1?;
         result
     }
 
@@ -93,7 +94,7 @@ impl<'a> DS93C46<'a> {
             let b1 = DS93C46::read_byte(spi)?;
             let b2 = DS93C46::read_byte(spi)?;
             self.deselect_chip();
-            target[i] = (b1 << 1 | b2 >> 7);
+            target[i] = b1 << 1 | b2 >> 7;
             // delay.delay_us(100);
         }
         Ok(())
