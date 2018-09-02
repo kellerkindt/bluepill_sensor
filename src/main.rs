@@ -310,6 +310,23 @@ fn handle_udp_requests(
                     })?;
                     false
                 }
+
+                Request::ReadSpecified(id, Bus::OneWire) => {
+                    Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32))
+                        .write(writer)?;
+                    let ms_till_ready = prepare_requested_on_one_wire(
+                        platform,
+                        &mut &*request_content_buffer,
+                        writer,
+                    )?;
+                    platform.delay.delay_ms(ms_till_ready);
+                    transmit_requested_on_one_wire(
+                        platform,
+                        &mut &*request_content_buffer,
+                        writer,
+                    )?;
+                    false
+                }
                 _ => {
                     led_blue.set_low();
                     handle_udp_requests_legacy(
@@ -329,7 +346,7 @@ fn handle_udp_requests(
                         led_yellow,
                         led_blue,
                     )?
-                },
+                }
             };
 
             available - writer.available()
@@ -369,11 +386,6 @@ fn handle_udp_requests_legacy(
     let mut reset = false;
 
     match request {
-        Request::ReadAll(id) | Request::ReadAllOnBus(id, Bus::OneWire) => {
-            Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
-            transmit_all_on_one_wire(wire, delay, writer)?;
-        }
-
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
             // somehow 1, 2, 3 are not working atm
             if (bus as usize) < am2302.len() {
@@ -407,15 +419,6 @@ fn handle_udp_requests_legacy(
             } else {
                 Response::NotImplemented(id).write(writer)?;
             }
-        }
-
-
-        Request::ReadSpecified(id, Bus::OneWire) => {
-            Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32)).write(writer)?;
-            let ms_till_ready =
-                prepare_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
-            delay.delay_ms(ms_till_ready);
-            transmit_requested_on_one_wire(wire, delay, &mut &*request_content_buffer, writer)?;
         }
 
         Request::SetNetworkMac(id, mac) => {
@@ -471,34 +474,8 @@ fn handle_udp_requests_legacy(
     Ok(reset)
 }
 
-fn transmit_all_on_one_wire(
-    wire: &mut [&mut OneWire],
-    delay: &mut Delay,
-    writer: &mut sensor_common::Write,
-) -> Result<(), HandleError> {
-    'outer: for wire in wire.iter_mut() {
-        let mut search = DeviceSearch::new();
-        while writer.available() >= 12 {
-            if let Some(device) = wire.search_next(&mut search, delay)? {
-                let value = measure_retry_once_on_crc_error(*wire, &device, delay);
-
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(&mut buffer[..], value);
-
-                writer.write_all(&device.address)?;
-                writer.write_all(&buffer)?;
-            } else {
-                // no devices found, search on next bus
-                continue 'outer;
-            }
-        }
-    }
-    Ok(())
-}
-
 fn prepare_requested_on_one_wire(
-    wire: &mut [&mut OneWire],
-    delay: &mut Delay,
+    platform: &mut Platform,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
 ) -> Result<u16, HandleError> {
@@ -517,18 +494,16 @@ fn prepare_requested_on_one_wire(
             ],
         };
 
-        for wire in wire.iter_mut() {
-            if let Ok(min_ms_to_sleep) = prepare_measurement(*wire, &device, delay) {
-                ms_to_sleep = min_ms_to_sleep.max(ms_to_sleep);
-            }
-        }
+        ms_to_sleep = platform
+            .onewire_prepare_read(&device)
+            .unwrap_or(0)
+            .max(ms_to_sleep);
     }
     Ok(ms_to_sleep)
 }
 
 fn transmit_requested_on_one_wire(
-    wire: &mut [&mut OneWire],
-    delay: &mut Delay,
+    platform: &mut Platform,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
 ) -> Result<(), HandleError> {
@@ -546,13 +521,9 @@ fn transmit_requested_on_one_wire(
             ],
         };
 
-        let mut value = ::core::f32::NAN;
-        for wire in wire.iter_mut() {
-            value = measure_retry_once_on_crc_error(*wire, &device, delay);
-            if !value.is_nan() {
-                break;
-            }
-        }
+        let mut value = platform
+            .onewire_read(&device, 1)
+            .unwrap_or(::core::f32::NAN);
 
         let mut buffer = [0u8; 4];
         NetworkEndian::write_f32(&mut buffer[..], value);
@@ -561,30 +532,6 @@ fn transmit_requested_on_one_wire(
         writer.write_all(&buffer)?;
     }
     Ok(())
-}
-
-fn measure_retry_once_on_crc_error(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> f32 {
-    match measure(wire, device, delay) {
-        Ok(value) => value,
-        Err(HandleError::OneWire(onewire::Error::CrcMismatch(_, _))) => {
-            match measure(wire, &device, delay) {
-                Ok(value) => value,
-                _ => core::f32::NAN,
-            }
-        }
-        _ => core::f32::NAN,
-    }
-}
-
-fn prepare_measurement(
-    wire: &mut OneWire,
-    device: &Device,
-    delay: &mut Delay,
-) -> Result<u16, HandleError> {
-    match device.family_code() {
-        ds18b20::FAMILY_CODE => Ok(DS18B20::new(device.clone())?.start_measurement(wire, delay)?),
-        _ => Err(HandleError::Unavailable),
-    }
 }
 
 fn measure(wire: &mut OneWire, device: &Device, delay: &mut Delay) -> Result<f32, HandleError> {

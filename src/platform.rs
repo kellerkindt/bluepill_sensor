@@ -10,6 +10,8 @@ use embedded_hal::spi::FullDuplex;
 
 use NetworkConfiguration;
 
+use ds18b20;
+
 use am2302::Am2302;
 
 use w5500::Interrupt;
@@ -20,6 +22,7 @@ use w5500::W5500;
 use ds93c46::DS93C46;
 use onewire;
 use onewire::OneWire;
+use onewire::Sensor as OneWireSensor;
 
 pub const SOCKET_UDP: Socket = Socket::Socket0;
 pub const SOCKET_UDP_PORT: u16 = 51;
@@ -123,7 +126,10 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     }
 
     /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.
-    pub fn onewire_discover_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(&mut self, mut f: F) -> Result<(), E> {
+    pub fn onewire_discover_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(
+        &mut self,
+        mut f: F,
+    ) -> Result<(), E> {
         'outer: for wire in self.onewire.iter_mut() {
             let mut search = onewire::DeviceSearch::new();
             while let Ok(Some(device)) = wire.search_next(&mut search, self.delay) {
@@ -133,6 +139,53 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
             }
         }
         Ok(())
+    }
+
+    /// Prepares the given `onewire::Device` to be read. Returns the
+    /// time in milliseconds the device needs until ready for read.
+    /// Fails if the device is unsupported.
+    pub fn onewire_prepare_read(&mut self, device: &onewire::Device) -> Result<u16, ()> {
+        let mut result = Err(());
+        match device.family_code() {
+            ds18b20::FAMILY_CODE => {
+                if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
+                    for wire in self.onewire.iter_mut() {
+                        if let Ok(time) = dev.start_measurement(wire, self.delay) {
+                            result = Ok(time);
+                            break;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        result
+    }
+
+    /// Reads from the given `onewire::Device`. Returns the value as f32.
+    /// Fails if the device is unsupported.
+    pub fn onewire_read(
+        &mut self,
+        device: &onewire::Device,
+        retry_count_on_crc_error: u8,
+    ) -> Result<f32, ()> {
+        match device.family_code() {
+            ds18b20::FAMILY_CODE => {
+                if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
+                    for wire in self.onewire.iter_mut() {
+                        for _ in 0..retry_count_on_crc_error {
+                            match dev.read_temperature(wire, self.delay) {
+                                Ok(value) => return Ok(value),
+                                Err(onewire::Error::CrcMismatch(_, _)) => continue,
+                                _ => break,
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Err(())
     }
 
     pub fn network_configuration(&self) -> &NetworkConfiguration {
