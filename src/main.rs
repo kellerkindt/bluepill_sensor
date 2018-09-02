@@ -144,8 +144,6 @@ pub fn main() -> ! {
         &mut rcc.apb2,
     );
 
-
-
     // DWT does not count without a debugger connected and without
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
     // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
@@ -172,12 +170,10 @@ pub fn main() -> ! {
     let mut am2302_07 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_08 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
 
-
     let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
     let mut wire = OneWire::new(&mut one, false);
-
 
     let mut platform = Platform {
         information,
@@ -232,7 +228,13 @@ pub fn main() -> ! {
             }
         }
 
-        match handle_udp_requests(&mut platform, &mut [0u8; 2048], &mut led_red, &mut led_yellow, &mut led_blue) {
+        match handle_udp_requests(
+            &mut platform,
+            &mut [0u8; 2048],
+            &mut led_red,
+            &mut led_yellow,
+            &mut led_blue,
+        ) {
             Err(_e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
@@ -295,23 +297,40 @@ fn handle_udp_requests(
             let (_request_header_buffer, request_content_buffer) =
                 whole_request_buffer.split_at_mut(request_length);
 
-            reset = handle_udp_requests_legacy(
-                id,
-                request,
-                &platform.information,
-                &mut platform.network_config,
-                platform.reset,
-                platform.eeprom,
-                &mut platform.humidity,
-                platform.onewire,
-                platform.delay,
-                platform.spi,
-                request_content_buffer,
-                writer,
-                led_red,
-                led_yellow,
-                led_blue,
-            )?;
+            led_blue.set_high();
+            reset = match request {
+                Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
+                    Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
+                    platform.discover_onewire_devices::<sensor_common::Error, _>(|device| {
+                        if writer.available() >= device.address.len() {
+                            writer.write_all(&device.address)?;
+                        }
+                        // does it accept another device?
+                        Ok(writer.available() >= device.address.len())
+                    })?;
+                    false
+                }
+                _ => {
+                    led_blue.set_low();
+                    handle_udp_requests_legacy(
+                        id,
+                        request,
+                        &platform.information,
+                        &mut platform.network_config,
+                        platform.reset,
+                        platform.eeprom,
+                        &mut platform.humidity,
+                        platform.onewire,
+                        platform.delay,
+                        platform.spi,
+                        request_content_buffer,
+                        writer,
+                        led_red,
+                        led_yellow,
+                        led_blue,
+                    )?
+                },
+            };
 
             available - writer.available()
         };
@@ -340,7 +359,7 @@ fn handle_udp_requests_legacy(
     am2302: &mut [Am2302],
     wire: &mut [&mut OneWire],
     delay: &mut Delay,
-    spi: &mut FullDuplex<u8, Error=spi::Error>,
+    spi: &mut FullDuplex<u8, Error = spi::Error>,
     request_content_buffer: &[u8],
     writer: &mut ::sensor_common::Write,
     led_red: &mut OutputPin,
@@ -377,11 +396,11 @@ fn handle_udp_requests_legacy(
                             ::am2302::Error::NotHighWithin(time) => {
                                 led_yellow.set_high();
                                 writer.write_u8(time as u8)?;
-                            },
+                            }
                             ::am2302::Error::NotLowWithin(time) => {
                                 led_blue.set_high();
                                 writer.write_u8(time as u8)?;
-                            },
+                            }
                         }
                     }
                 }
@@ -429,7 +448,6 @@ fn handle_udp_requests_legacy(
             buffer[16] = info.cpu_revision();
             buffer[17] = MAGIC_EEPROM_CRC_START;
             buffer[18] = 0x00;
-
 
             writer.write_all(&buffer)?;
         }
@@ -493,7 +511,7 @@ fn discover_all_on_one_wire(
                 writer.write_all(&device.address)?;
             } else {
                 // non left on this bus, try next
-                break
+                break;
             }
         }
     }
@@ -526,7 +544,6 @@ fn prepare_requested_on_one_wire(
                 ms_to_sleep = min_ms_to_sleep.max(ms_to_sleep);
             }
         }
-
     }
     Ok(ms_to_sleep)
 }
@@ -558,7 +575,6 @@ fn transmit_requested_on_one_wire(
                 break;
             }
         }
-
 
         let mut buffer = [0u8; 4];
         NetworkEndian::write_f32(&mut buffer[..], value);
@@ -645,11 +661,10 @@ pub struct NetworkConfiguration {
 }
 
 impl NetworkConfiguration {
-
     pub fn load(
         &mut self,
         eeprom: &mut DS93C46,
-        spi: &mut FullDuplex<u8, Error=spi::Error>,
+        spi: &mut FullDuplex<u8, Error = spi::Error>,
         delay: &mut DelayMs<u16>,
     ) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3 * 4 + 2];
@@ -673,7 +688,7 @@ impl NetworkConfiguration {
     fn write(
         &self,
         eeprom: &mut DS93C46,
-        spi: &mut FullDuplex<u8, Error=spi::Error>,
+        spi: &mut FullDuplex<u8, Error = spi::Error>,
         delay: &mut DelayMs<u16>,
     ) -> Result<(), HandleError> {
         let mut buf = [0u8; 6 + 3 * 4 + 2];

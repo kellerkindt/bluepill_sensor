@@ -47,7 +47,7 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     pub fn save_network_configuration(&mut self) -> Result<(), ()> {
         match self.network_config.write(self.eeprom, self.spi, self.delay) {
             Err(_) => Err(()),
-            Ok(_) => Ok(())
+            Ok(_) => Ok(()),
         }
     }
 
@@ -120,6 +120,19 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
         // restore listen state
         self.network
             .listen_udp(self.spi, SOCKET_UDP, SOCKET_UDP_PORT)
+    }
+
+    /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.
+    pub fn discover_onewire_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(&mut self, mut f: F) -> Result<(), E> {
+        'outer: for wire in self.onewire.iter_mut() {
+            let mut search = onewire::DeviceSearch::new();
+            while let Ok(Some(device)) = wire.search_next(&mut search, self.delay) {
+                if !f(device)? {
+                    break 'outer;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn network_configuration(&self) -> &NetworkConfiguration {
