@@ -331,7 +331,7 @@ fn handle_udp_requests(
             // increase possibility that packet is out
             platform.delay.delay_ms(100_u16);
             let _ = platform.load_network_configuration();
-            // platform.reset();
+            platform.reset();
         }
         Ok(Some((ip, port)))
     } else {
