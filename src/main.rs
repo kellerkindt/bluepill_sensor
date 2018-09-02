@@ -28,9 +28,6 @@ mod ds93c46;
 mod platform;
 
 use stm32f103xx_hal::delay::Delay;
-use stm32f103xx_hal::gpio::gpioc::PCx;
-use stm32f103xx_hal::gpio::OpenDrain;
-use stm32f103xx_hal::gpio::Output;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_InputPin as InputPin;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
 use stm32f103xx_hal::prelude::*;
@@ -39,23 +36,16 @@ use stm32f103xx_hal::spi;
 use stm32f103xx_hal::spi::Spi;
 
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::blocking::delay::DelayUs;
 use embedded_hal::spi::FullDuplex;
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
 
-use stm32f103xx::GPIOC;
-
-use core::fmt::Write;
 use core::result::*;
-
-use cortex_m::asm;
 
 use am2302::Am2302;
 use onewire::compute_partial_crc8 as crc8;
 use onewire::*;
-use pcd8544::*;
 use sensor_common::*;
 use w5500::*;
 
@@ -83,12 +73,10 @@ fn default_handler(irqn: i16) {
 
 pub fn main() -> ! {
     let mut cp: cortex_m::Peripherals = cortex_m::Peripherals::take().unwrap();
-    let mut peripherals = stm32f103xx::Peripherals::take().unwrap();
+    let peripherals = stm32f103xx::Peripherals::take().unwrap();
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
-
-    let mut speed = 500_u16;
 
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
     let mut delay = stm32f103xx_hal::delay::Delay::new(cp.SYST, clocks);
@@ -160,8 +148,9 @@ pub fn main() -> ! {
 
     // DWT does not count without a debugger connected and without
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
-    unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
-    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, clocks);
+    // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
+    // unsafe { cp.DCB.demcr.modify(|w| w | (0x01 << 24)); }
+    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, cp.DCB, clocks);
 
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
@@ -244,14 +233,16 @@ pub fn main() -> ! {
         }
 
         match handle_udp_requests(&mut platform, &mut [0u8; 2048], &mut led_red, &mut led_yellow, &mut led_blue) {
-            Err(e) => {
+            Err(_e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
+                led_yellow.set_high();
                 platform.delay.delay_ms(2_000_u16);
             }
             Ok(address) => if let Some((ip, port)) = address {
                 // writeln!(display, "Fine:");
                 // writeln!(display, "{}:{}", ip, port);
+                led_yellow.set_low();
             },
         };
 
@@ -261,7 +252,7 @@ pub fn main() -> ! {
                 // pressed for longer than 3s?
                 if (probe_start.elapsed() / timer.frequency().0) > 3 {
                     (*platform.network_configuration_mut()) = NetworkConfiguration::default();
-                    platform.save_network_configuration();
+                    let _ = platform.save_network_configuration();
                     while config_reset.is_high() {
                         led_blue.set_high();
                         led_yellow.set_high();
@@ -288,7 +279,7 @@ fn handle_udp_requests(
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
-        let mut reset = false;
+        let mut reset;
         let response_size = {
             let writer = &mut &mut *response_buffer as &mut ::sensor_common::Write;
 
@@ -375,9 +366,9 @@ fn handle_udp_requests_legacy(
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut buffer = [0u8; 4];
                         NetworkEndian::write_f32(&mut buffer[..], value.humidity);
-                        writer.write_all(&buffer[..]);
+                        writer.write_all(&buffer[..])?;
                         NetworkEndian::write_f32(&mut buffer[..], value.temperature);
-                        writer.write_all(&buffer[..]);
+                        writer.write_all(&buffer[..])?;
                     }
                     Err(e) => {
                         Response::NotAvailable(id).write(writer)?;
@@ -654,15 +645,6 @@ pub struct NetworkConfiguration {
 }
 
 impl NetworkConfiguration {
-    fn from<S: FullDuplex<u8, Error=spi::Error>>(
-        eeprom: &mut DS93C46,
-        spi: &mut S,
-        delay: &mut DelayMs<u16>,
-    ) -> Result<NetworkConfiguration, HandleError> {
-        let mut configuration = NetworkConfiguration::default();
-        configuration.load(eeprom, spi, delay)?;
-        Ok(configuration)
-    }
 
     pub fn load(
         &mut self,
