@@ -427,7 +427,7 @@ fn handle_udp_requests_legacy(
         }
 
         Request::RetrieveDeviceInformation(id) => {
-            let mut buffer = [0u8; 4 + 8 + 6];
+            let mut buffer = [0u8; 4 + 8 + 6 + 1];
             Response::Ok(id, Format::ValueOnly(Type::Bytes(buffer.len() as u8))).write(writer)?;
             NetworkEndian::write_u32(&mut buffer[0..], info.frequency().0);
             NetworkEndian::write_u64(&mut buffer[4..], info.uptime());
@@ -437,6 +437,7 @@ fn handle_udp_requests_legacy(
             NetworkEndian::write_u16(&mut buffer[14..], info.cpu_partnumber());
             buffer[16] = info.cpu_revision();
             buffer[17] = MAGIC_EEPROM_CRC_START;
+            buffer[18] = 0x00;
 
 
             writer.write_all(&buffer)?;
