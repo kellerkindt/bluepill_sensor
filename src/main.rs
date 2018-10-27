@@ -1,6 +1,3 @@
-#![feature(core_intrinsics)]
-#![feature(lang_items)]
-#![feature(used)]
 #![no_std]
 #![no_main]
 
@@ -55,23 +52,9 @@ use byteorder::NetworkEndian;
 use ds93c46::*;
 use platform::*;
 
-entry!(main);
 
-// define the hard fault handler
-exception!(HardFault, hard_fault);
-
-fn hard_fault(ef: &cortex_m_rt::ExceptionFrame) -> ! {
-    panic!("HardFault at {:#?}", ef);
-}
-
-// define the default exception handler
-exception!(*, default_handler);
-
-fn default_handler(irqn: i16) {
-    panic!("Unhandled exception (IRQn = {})", irqn);
-}
-
-pub fn main() -> ! {
+#[entry]
+fn main() -> ! {
     let mut cp: cortex_m::Peripherals = cortex_m::Peripherals::take().unwrap();
     let peripherals = stm32f103xx::Peripherals::take().unwrap();
 
@@ -148,7 +131,9 @@ pub fn main() -> ! {
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
     // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
     // unsafe { cp.DCB.demcr.modify(|w| w | (0x01 << 24)); }
-    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT, cp.DCB, clocks);
+    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT,
+                                                        ::stm32f103xx_hal::time::enable_trace(cp.DCB),
+                                                        clocks);
 
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());

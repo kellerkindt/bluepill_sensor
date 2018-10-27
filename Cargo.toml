@@ -14,7 +14,7 @@
 name = "bluepill_sensor"
 version = "0.3.9"
 authors = ["Michael Watzko <michael@watzko.de>"]
-description = "Stm32f103/Bluepill with W5500 ethernet chip, OneWire interface and sensor_common communication"
+description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
 categories = ["embedded", "no-std"]
 license = "MIT OR Apache-2.0"
@@ -34,18 +34,15 @@ bare-metal = "0.2.0"
 embedded-hal = "0.2.1"
 byteorder = { version = "1.2.1", default-features = false }
 nb = "0.1.1"
-panic-abort = "0.2.0"
+cortex-m-rt = "0.6.5"
+panic-abort = "0.3.1"
 
 [dependencies.stm32f103xx]
 version = "0.10.0"
 features = ["rt"]
 
-[dependencies.cortex-m-rt]
-version = "=0.5.1"
-
 [dependencies.cortex-m]
-version = "=0.5.7"
-path = "../cortex-m"
+version = "0.5.7"
 
 
 
@@ -69,5 +66,4 @@ version = "0.1.0"
 path = "../stm32f103xx-hal"
 
 [replace]
-"cortex-m:0.5.7" = { path = "../cortex-m" }
 "stm32f103xx:0.10.0" = { path = "../stm32f103xx" }
