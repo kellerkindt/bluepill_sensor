@@ -18,7 +18,7 @@ description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface an
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
 categories = ["embedded", "no-std"]
 license = "MIT OR Apache-2.0"
-repository = "https://git.tallbyte.com/rust/bluepill_sensor"
+repository = "https://github.com/kellerkindt/bluepill_sensor"
 
 [profile.dev]
 codegen-units = 1
