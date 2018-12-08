@@ -7,7 +7,6 @@ extern crate cortex_m_rt;
 extern crate panic_abort;
 
 extern crate embedded_hal;
-extern crate stm32f103xx;
 extern crate stm32f103xx_hal;
 
 extern crate byteorder;
@@ -56,7 +55,7 @@ use platform::*;
 #[entry]
 fn main() -> ! {
     let mut cp: cortex_m::Peripherals = cortex_m::Peripherals::take().unwrap();
-    let peripherals = stm32f103xx::Peripherals::take().unwrap();
+    let peripherals = stm32f103xx_hal::stm32f103xx::Peripherals::take().unwrap();
 
     let mut flash = peripherals.FLASH.constrain();
     let mut rcc = peripherals.RCC.constrain();
