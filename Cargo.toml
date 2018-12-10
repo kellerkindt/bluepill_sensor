@@ -35,7 +35,8 @@ embedded-hal = "0.2.1"
 byteorder = { version = "1.2.1", default-features = false }
 nb = "0.1.1"
 cortex-m-rt = "0.6.5"
-panic-abort = "0.3.1"
+#panic-abort = "0.3.1"
+panic-halt = "0.2.0"
 
 # [dependencies.stm32f103xx]
 # version = "0.11.0"

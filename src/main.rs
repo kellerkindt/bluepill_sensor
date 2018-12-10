@@ -2,9 +2,11 @@
 #![no_main]
 
 extern crate cortex_m;
-#[macro_use(entry, exception)]
+//#[macro_use(entry, exception)]
+#[macro_use(entry)]
 extern crate cortex_m_rt;
-extern crate panic_abort;
+//extern crate panic_abort;
+extern crate panic_halt;
 
 extern crate embedded_hal;
 extern crate stm32f103xx_hal;
