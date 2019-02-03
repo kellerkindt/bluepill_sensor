@@ -30,6 +30,7 @@ use stm32f103xx_hal::prelude::_embedded_hal_digital_InputPin as InputPin;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_OutputPin as OutputPin;
 use stm32f103xx_hal::prelude::*;
 
+use stm32f103xx_hal::i2c::Error as I2cError;
 use stm32f103xx_hal::spi;
 use stm32f103xx_hal::spi::Spi;
 
@@ -40,6 +41,7 @@ use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
 
 use core::result::*;
+use nb::Error as NbError;
 
 use am2302::Am2302;
 use onewire::compute_partial_crc8 as crc8;
@@ -52,7 +54,9 @@ use byteorder::NetworkEndian;
 
 use ds93c46::*;
 use platform::*;
-
+use stm32f103xx_hal::i2c;
+use stm32f103xx_hal::i2c::BlockingI2c;
+use stm32f103xx_hal::i2c::I2c;
 
 #[entry]
 fn main() -> ! {
@@ -128,13 +132,31 @@ fn main() -> ! {
         &mut rcc.apb2,
     );
 
+    let mut i2c = BlockingI2c::i2c1(
+        peripherals.I2C1,
+        (
+            gpiob.pb8.into_alternate_open_drain(&mut gpiob.crh),
+            gpiob.pb9.into_alternate_open_drain(&mut gpiob.crh),
+        ),
+        &mut afio.mapr,
+        i2c::Mode::Standard { frequency: 10_000 },
+        clocks,
+        &mut rcc.apb1,
+        1_000,
+        2,
+        1_000,
+        10_000,
+    );
+
     // DWT does not count without a debugger connected and without
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
     // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
     // unsafe { cp.DCB.demcr.modify(|w| w | (0x01 << 24)); }
-    let timer = ::stm32f103xx_hal::time::MonoTimer::new(cp.DWT,
-                                                        ::stm32f103xx_hal::time::enable_trace(cp.DCB),
-                                                        clocks);
+    let timer = ::stm32f103xx_hal::time::MonoTimer::new(
+        cp.DWT,
+        ::stm32f103xx_hal::time::enable_trace(cp.DCB),
+        clocks,
+    );
 
     // let countdown = ::stm32f103xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
@@ -167,6 +189,7 @@ fn main() -> ! {
         delay: &mut delay,
         onewire: &mut [&mut wire, &mut onewire_2],
         spi: &mut spi,
+        i2c: &mut i2c,
 
         network: &mut w5500,
         network_reset: &mut rs,
@@ -227,11 +250,13 @@ fn main() -> ! {
                 led_yellow.set_high();
                 platform.delay.delay_ms(2_000_u16);
             }
-            Ok(address) => if let Some((ip, port)) = address {
-                // writeln!(display, "Fine:");
-                // writeln!(display, "{}:{}", ip, port);
-                led_yellow.set_low();
-            },
+            Ok(address) => {
+                if let Some((ip, port)) = address {
+                    // writeln!(display, "Fine:");
+                    // writeln!(display, "{}:{}", ip, port);
+                    led_yellow.set_low();
+                }
+            }
         };
 
         {
@@ -313,6 +338,24 @@ fn handle_udp_requests(
                     )?;
                     false
                 }
+
+                Request::ReadSpecified(id, Bus::I2C) if request_content_buffer.len() >= 2 => {
+                    let len_response = request_content_buffer[0];
+                    let address = request_content_buffer[1];
+                    let mut response_buffer = [0u8; 255]; // TODO risky
+
+
+                    platform.i2c.write_read(
+                        address,
+                        &request_content_buffer[2..],
+                        &mut response_buffer[..len_response as usize],
+                    )?;
+
+                    Response::Ok(id, Format::ValueOnly(Type::Bytes(len_response))).write(writer)?;
+                    writer.write_all(&response_buffer)?;
+                    false
+                }
+
                 _ => {
                     led_blue.set_low();
                     handle_udp_requests_legacy(
@@ -536,6 +579,7 @@ pub enum HandleError {
     Unavailable,
     NotMagicCrcAtStart,
     CrcError,
+    I2c(NbError<I2cError>),
 }
 
 impl From<spi::Error> for HandleError {
@@ -559,6 +603,12 @@ impl From<onewire::Error> for HandleError {
 impl From<()> for HandleError {
     fn from(_: ()) -> Self {
         HandleError::Unknown
+    }
+}
+
+impl From<NbError<I2cError>> for HandleError {
+    fn from(e: NbError<I2cError>) -> Self {
+        HandleError::I2c(e)
     }
 }
 

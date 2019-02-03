@@ -5,8 +5,14 @@ use stm32f103xx_hal::time::Instant;
 use stm32f103xx_hal::time::MonoTimer;
 
 use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::blocking::i2c::Read;
+use embedded_hal::blocking::i2c::Write;
+use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::FullDuplex;
+
+use nb::Error as NbError;
+use stm32f103xx_hal::i2c::Error as I2cError;
 
 use NetworkConfiguration;
 
@@ -30,11 +36,12 @@ pub const SOCKET_UDP_PORT: u16 = 51;
 pub struct Platform<'a, 'inner: 'a> {
     pub(super) information: DeviceInformation,
 
-    // peripherie
+    // periphery
     pub(super) delay: &'a mut Delay,
 
     pub(super) onewire: &'a mut [&'a mut OneWire<'inner>],
     pub(super) spi: &'a mut FullDuplex<u8, Error = spi::Error>,
+    pub(super) i2c: &'a mut WriteRead<Error = NbError<I2cError>>,
 
     pub(super) network: &'a mut W5500<'inner>,
     pub(super) network_reset: &'a mut OutputPin,
@@ -254,4 +261,13 @@ impl DeviceInformation {
     pub fn cpu_revision(&self) -> u8 {
         self.cpuid as u8 & 0x0F
     }
+}
+
+pub trait FullI2C: WriteRead + Write + Read {}
+
+impl<T> FullI2C for T where
+    T: WriteRead<Error = NbError<I2cError>>
+        + Write<Error = NbError<I2cError>>
+        + Read<Error = NbError<I2cError>>
+{
 }
