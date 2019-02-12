@@ -1,3 +1,5 @@
+use void::Void;
+
 use stm32f103xx_hal::delay::Delay;
 use stm32f103xx_hal::spi;
 use stm32f103xx_hal::time::Hertz;
@@ -9,10 +11,21 @@ use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::digital::OutputPin;
+use embedded_hal::serial::Read as SerialRead;
+use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
 
 use nb::Error as NbError;
+use stm32f103xx_hal::device::USART1;
+use stm32f103xx_hal::gpio::gpioa::PA10;
+use stm32f103xx_hal::gpio::gpioa::PA9;
+use stm32f103xx_hal::gpio::Alternate;
+use stm32f103xx_hal::gpio::Floating;
+use stm32f103xx_hal::gpio::Input;
+use stm32f103xx_hal::gpio::PushPull;
 use stm32f103xx_hal::i2c::Error as I2cError;
+use stm32f103xx_hal::serial::Error as SerialError;
+use stm32f103xx_hal::serial::Serial;
 
 use NetworkConfiguration;
 
@@ -20,10 +33,7 @@ use ds18b20;
 
 use am2302::Am2302;
 
-use w5500::Interrupt;
-use w5500::IpAddress;
-use w5500::Socket;
-use w5500::W5500;
+use w5500::*;
 
 use ds93c46::DS93C46;
 use onewire;
@@ -42,12 +52,15 @@ pub struct Platform<'a, 'inner: 'a> {
     pub(super) onewire: &'a mut [&'a mut OneWire<'inner>],
     pub(super) spi: &'a mut FullDuplex<u8, Error = spi::Error>,
     pub(super) i2c: &'a mut WriteRead<Error = NbError<I2cError>>,
+    pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Void>,
+    pub(super) usart1_rx: &'a mut SerialRead<u8, Error = SerialError>,
 
     pub(super) network: &'a mut W5500<'inner>,
     pub(super) network_reset: &'a mut OutputPin,
     pub(super) network_config: NetworkConfiguration,
+    pub(super) network_udp: Option<UdpSocket>,
 
-    pub(super) humidity: [Am2302<'a>; 7],
+    pub(super) humidity: [Am2302<'a>; 5],
     pub(super) eeprom: &'a mut DS93C46<'inner>,
 
     pub(super) reset: &'a mut OutputPin,
@@ -69,24 +82,25 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     }
 
     pub fn init_network(&mut self) -> Result<(), spi::Error> {
-        self.network.init(self.spi)?;
-        self.network.set_mac(self.spi, &self.network_config.mac)?;
-        self.network.set_ip(self.spi, &self.network_config.ip)?;
-        self.network
-            .set_subnet(self.spi, &self.network_config.subnet)?;
-        self.network
-            .set_gateway(self.spi, &self.network_config.gateway)?;
+        let mut active = self.network.activate(self.spi)?;
+        let active = &mut active;
+
+        active.set_mac(self.network_config.mac)?;
+        active.set_ip(self.network_config.ip)?;
+        active.set_subnet(self.network_config.subnet)?;
+        active.set_gateway(self.network_config.gateway)?;
 
         self.delay.delay_ms(10_u16);
 
-        /*
-        self.network.set_socket_interrupt_mask(self.spi, SOCKET_UDP, &[
-            Interrupt::SendOk,
-        ])?;*/
-        self.network
-            .reset_interrupt(self.spi, SOCKET_UDP, Interrupt::SendOk)?;
-        self.network
-            .listen_udp(self.spi, SOCKET_UDP, SOCKET_UDP_PORT)?;
+        if self.network_udp.is_none() {
+            if let Some(uninitialized) = active.take_socket(SOCKET_UDP) {
+                // TODO lost on ERROR
+                self.network_udp = (active, uninitialized)
+                    .try_into_udp_server_socket(SOCKET_UDP_PORT)
+                    .ok();
+            }
+        }
+
         Ok(())
     }
 
@@ -104,32 +118,19 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
         &mut self,
         buffer: &mut [u8],
     ) -> Result<Option<(IpAddress, u16, usize)>, spi::Error> {
-        self.network.try_receive_udp(self.spi, SOCKET_UDP, buffer)
-    }
+        let mut active = self.network.activate(self.spi)?;
+        let active = &mut active;
+        let socket = self.network_udp.as_ref().ok_or(spi::Error::ModeFault)?;
 
-    pub fn is_udp_interrupt_set(&mut self, interrupt: Interrupt) -> Result<bool, spi::Error> {
-        self.network
-            .is_interrupt_set(self.spi, SOCKET_UDP, interrupt)
-    }
-
-    pub fn reset_udp_interrupt(&mut self, interrupt: Interrupt) -> Result<(), spi::Error> {
-        self.network
-            .reset_interrupt(self.spi, SOCKET_UDP, interrupt)
+        (active, socket).receive(buffer)
     }
 
     pub fn send_udp(&mut self, host: &IpAddress, port: u16, data: &[u8]) -> Result<(), spi::Error> {
-        self.network
-            .send_udp(self.spi, SOCKET_UDP, SOCKET_UDP_PORT, host, port, data)?;
-        for _ in 0..0xFFFF {
-            // wait until sent
-            if self.is_udp_interrupt_set(Interrupt::SendOk)? {
-                self.reset_udp_interrupt(Interrupt::SendOk)?;
-                break;
-            }
-        }
-        // restore listen state
-        self.network
-            .listen_udp(self.spi, SOCKET_UDP, SOCKET_UDP_PORT)
+        let mut active = self.network.activate(self.spi)?;
+        let active = &mut active;
+        let socket = self.network_udp.as_ref().ok_or(spi::Error::ModeFault)?;
+
+        (active, socket).blocking_send(host, port, data)
     }
 
     /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.

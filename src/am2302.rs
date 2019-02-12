@@ -1,8 +1,8 @@
 use core::f32;
-
 use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
-
+use embedded_hal::timer::Cancel;
+use embedded_hal::timer::CountDown;
 use stm32f103xx_hal::time::MonoTimer;
 
 pub trait OpenDrainOutput: OutputPin + InputPin {}
@@ -106,6 +106,24 @@ impl<'a> Am2302<'a> {
             }
         }
         return false;
+    }
+
+    #[allow(unused)]
+    fn wait_for_nb<T, C: CountDown<Time = T> + Cancel, I: Into<T>>(
+        &self,
+        state: bool,
+        timeout: I,
+        c: &mut C,
+    ) -> bool {
+        c.start(timeout);
+        while let Err(nb::Error::WouldBlock) = c.wait() {
+            if self.pin.is_high() == state {
+                c.cancel();
+                return true;
+            }
+        }
+        c.cancel();
+        false
     }
 }
 

@@ -12,6 +12,7 @@ extern crate embedded_hal;
 extern crate stm32f103xx_hal;
 
 extern crate byteorder;
+extern crate void;
 
 #[macro_use(block)]
 extern crate nb;
@@ -35,6 +36,8 @@ use stm32f103xx_hal::spi;
 use stm32f103xx_hal::spi::Spi;
 
 use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::serial::Read as EmbeddedSerialRead;
+use embedded_hal::serial::Write as EmbeddedSerialWrite;
 use embedded_hal::spi::FullDuplex;
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
@@ -57,6 +60,8 @@ use platform::*;
 use stm32f103xx_hal::i2c;
 use stm32f103xx_hal::i2c::BlockingI2c;
 use stm32f103xx_hal::i2c::I2c;
+use stm32f103xx_hal::rcc::APB1;
+use stm32f103xx_hal::serial::Serial;
 
 #[entry]
 fn main() -> ! {
@@ -170,15 +175,38 @@ fn main() -> ! {
 
     // let mut am2302_00 = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
     // let mut am2302_01 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_02 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
-    let mut am2302_03 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
+    // let mut am2302_02 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
+    // let mut am2302_03 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_04 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_05 = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_06 = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_07 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_08 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
 
-    let mut w5500 = W5500::new(&mut spi, &mut cs_w5500);
+    let (mut usart_tx, mut usart_rx) = Serial::usart1(
+        peripherals.USART1,
+        (
+            gpioa.pa9.into_alternate_push_pull(&mut gpioa.crh),
+            gpioa.pa10.into_floating_input(&mut gpioa.crh),
+        ),
+        &mut afio.mapr,
+        9600.bps(),
+        clocks,
+        &mut rcc.apb2,
+    )
+    .split();
+
+    let mut w5500 = W5500::with_initialisation(
+        &mut cs_w5500,
+        &mut spi,
+        OnWakeOnLan::Ignore,
+        OnPingRequest::Respond,
+        ConnectionType::Ethernet,
+        ArpResponses::Cache,
+    ).unwrap();
+
+
+    // let mut w5500 = W5500ChipSelect::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
 
     let mut wire = OneWire::new(&mut one, false);
@@ -190,16 +218,19 @@ fn main() -> ! {
         onewire: &mut [&mut wire, &mut onewire_2],
         spi: &mut spi,
         i2c: &mut i2c,
+        usart1_tx: &mut usart_tx,
+        usart1_rx: &mut usart_rx,
 
         network: &mut w5500,
         network_reset: &mut rs,
         network_config: NetworkConfiguration::default(),
+        network_udp: None,
 
         humidity: [
             // Am2302::new(&mut am2302_00, &timer),
             // Am2302::new(&mut am2302_01, &timer),
-            Am2302::new(&mut am2302_02, &timer),
-            Am2302::new(&mut am2302_03, &timer),
+            // Am2302::new(&mut am2302_02, &timer),
+            // Am2302::new(&mut am2302_03, &timer),
             Am2302::new(&mut am2302_04, &timer),
             Am2302::new(&mut am2302_05, &timer),
             Am2302::new(&mut am2302_06, &timer),
@@ -344,7 +375,6 @@ fn handle_udp_requests(
                     let address = request_content_buffer[1];
                     let mut response_buffer = [0u8; 255]; // TODO risky
 
-
                     platform.i2c.write_read(
                         address,
                         &request_content_buffer[2..],
@@ -353,6 +383,30 @@ fn handle_udp_requests(
 
                     Response::Ok(id, Format::ValueOnly(Type::Bytes(len_response))).write(writer)?;
                     writer.write_all(&response_buffer)?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(255)) => {
+                    let mut value = [0u8; 2];
+                    block!(platform.usart1_tx.write(0xFF)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x86)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x79)).unwrap(); // operation cannot fail (void)
+                    Response::Ok(id, Format::ValueOnly(Type::Bytes(9))).write(writer)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
+                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
                     false
                 }
 
