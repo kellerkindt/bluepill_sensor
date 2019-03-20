@@ -140,8 +140,8 @@ fn main() -> ! {
     let mut i2c = BlockingI2c::i2c1(
         peripherals.I2C1,
         (
-            gpiob.pb8.into_alternate_open_drain(&mut gpiob.crh),
-            gpiob.pb9.into_alternate_open_drain(&mut gpiob.crh),
+            gpiob.pb6.into_alternate_open_drain(&mut gpiob.crl),
+            gpiob.pb7.into_alternate_open_drain(&mut gpiob.crl),
         ),
         &mut afio.mapr,
         i2c::Mode::Standard { frequency: 10_000 },
@@ -203,8 +203,8 @@ fn main() -> ! {
         OnPingRequest::Respond,
         ConnectionType::Ethernet,
         ArpResponses::Cache,
-    ).unwrap();
-
+    )
+    .unwrap();
 
     // let mut w5500 = W5500ChipSelect::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(&mut cs_eeprom);
@@ -386,8 +386,52 @@ fn handle_udp_requests(
                     false
                 }
 
+                Request::ReadSpecified(id, Bus::Custom(192)) => {
+                    const START_BYTE: u8 = 0xFF;
+                    const COMMAND: u8 = 0x86;
+                    block!(platform.usart1_tx.write(START_BYTE)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(COMMAND)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
+                    block!(platform.usart1_tx.write(0x79)).unwrap(); // operation cannot fail (void)
+                    let value: [u8; 9] = [
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                        block!(platform.usart1_rx.read()).unwrap_or(0),
+                    ];
+                    let checksum = 0xFF
+                        - (value[1]
+                            + value[2]
+                            + value[3]
+                            + value[4]
+                            + value[5]
+                            + value[6]
+                            + value[7])
+                        + 1;
+                    if checksum == value[8] && value[0] == START_BYTE && value[1] == COMMAND {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let float = NetworkEndian::read_u16(&value[2..4]) as f32;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], float);
+                        writer.write_all(&values[..])?;
+                        false
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                        false
+                    }
+                }
+
                 Request::ReadSpecified(id, Bus::Custom(255)) => {
-                    let mut value = [0u8; 2];
                     block!(platform.usart1_tx.write(0xFF)).unwrap(); // operation cannot fail (void)
                     block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
                     block!(platform.usart1_tx.write(0x86)).unwrap(); // operation cannot fail (void)

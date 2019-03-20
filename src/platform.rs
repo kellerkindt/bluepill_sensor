@@ -183,7 +183,7 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
                     for wire in self.onewire.iter_mut() {
                         for _ in 0..retry_count_on_crc_error {
                             match dev.read_temperature(wire, self.delay) {
-                                Ok(value) => return Ok(value),
+                                Ok(value) => return Ok(value as f32),
                                 Err(onewire::Error::CrcMismatch(_, _)) => continue,
                                 _ => break,
                             }
