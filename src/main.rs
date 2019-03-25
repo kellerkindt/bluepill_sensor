@@ -25,6 +25,7 @@ extern crate w5500;
 mod am2302;
 mod ds93c46;
 mod platform;
+mod bmp280;
 
 use stm32f103xx_hal::delay::Delay;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_InputPin as InputPin;
@@ -62,6 +63,7 @@ use stm32f103xx_hal::i2c::BlockingI2c;
 use stm32f103xx_hal::i2c::I2c;
 use stm32f103xx_hal::rcc::APB1;
 use stm32f103xx_hal::serial::Serial;
+use bmp280::BME280;
 
 #[entry]
 fn main() -> ! {
@@ -423,6 +425,48 @@ fn handle_udp_requests(
                         let float = NetworkEndian::read_u16(&value[2..4]) as f32;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], float);
+                        writer.write_all(&values[..])?;
+                        false
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                        false
+                    }
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(193)) => {
+                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
+                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value.humidity);
+                        writer.write_all(&values[..])?;
+                        false
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                        false
+                    }
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(194)) => {
+                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
+                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value.pressure);
+                        writer.write_all(&values[..])?;
+                        false
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                        false
+                    }
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(195)) => {
+                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
+                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value.temperature);
                         writer.write_all(&values[..])?;
                         false
                     } else {
