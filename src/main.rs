@@ -17,15 +17,16 @@ extern crate void;
 #[macro_use(block)]
 extern crate nb;
 
+extern crate ads1x1x;
 extern crate onewire;
 extern crate pcd8544;
 extern crate sensor_common;
 extern crate w5500;
 
 mod am2302;
+mod bme280;
 mod ds93c46;
 mod platform;
-mod bmp280;
 
 use stm32f103xx_hal::delay::Delay;
 use stm32f103xx_hal::prelude::_embedded_hal_digital_InputPin as InputPin;
@@ -36,6 +37,7 @@ use stm32f103xx_hal::i2c::Error as I2cError;
 use stm32f103xx_hal::spi;
 use stm32f103xx_hal::spi::Spi;
 
+use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::serial::Read as EmbeddedSerialRead;
 use embedded_hal::serial::Write as EmbeddedSerialWrite;
@@ -56,14 +58,16 @@ use w5500::*;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 
+use ads1x1x::{Ads1x1x, SlaveAddr, DataRate16Bit};
+use bme280::BME280;
 use ds93c46::*;
+use embedded_hal::blocking::i2c::WriteRead;
 use platform::*;
 use stm32f103xx_hal::i2c;
 use stm32f103xx_hal::i2c::BlockingI2c;
 use stm32f103xx_hal::i2c::I2c;
 use stm32f103xx_hal::rcc::APB1;
 use stm32f103xx_hal::serial::Serial;
-use bmp280::BME280;
 
 #[entry]
 fn main() -> ! {
@@ -475,6 +479,65 @@ fn handle_udp_requests(
                     }
                 }
 
+                Request::ReadSpecified(id, Bus::Custom(200)) => {
+                    let mut ads =
+                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
+                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA0)) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value as f32);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+                    false
+                }
+
+
+                Request::ReadSpecified(id, Bus::Custom(201)) => {
+                    let mut ads =
+                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
+                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA1)) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value as f32);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+                    false
+                }
+
+
+                Request::ReadSpecified(id, Bus::Custom(202)) => {
+                    let mut ads =
+                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
+                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA2)) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value as f32);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+                    false
+                }
+
+
+                Request::ReadSpecified(id, Bus::Custom(203)) => {
+                    let mut ads =
+                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
+                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA3)) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value as f32);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+                    false
+                }
+
                 Request::ReadSpecified(id, Bus::Custom(255)) => {
                     block!(platform.usart1_tx.write(0xFF)).unwrap(); // operation cannot fail (void)
                     block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
@@ -817,5 +880,28 @@ impl Default for NetworkConfiguration {
             subnet: IpAddress::new(255, 255, 255, 0),
             gateway: IpAddress::new(192, 168, 3, 1),
         }
+    }
+}
+
+struct I2CRefWrapper<'a>(&'a mut WriteRead<Error = nb::Error<stm32f103xx_hal::i2c::Error>>);
+
+impl<'a> WriteRead for I2CRefWrapper<'a> {
+    type Error = nb::Error<stm32f103xx_hal::i2c::Error>;
+
+    fn write_read(
+        &mut self,
+        address: u8,
+        bytes: &[u8],
+        buffer: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        self.0.write_read(address, bytes, buffer)
+    }
+}
+
+impl<'a> embedded_hal::blocking::i2c::Write for I2CRefWrapper<'a> {
+    type Error = nb::Error<stm32f103xx_hal::i2c::Error>;
+
+    fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.0.write_read(addr, bytes, &mut [])
     }
 }

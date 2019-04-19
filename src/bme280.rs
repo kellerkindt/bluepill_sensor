@@ -48,7 +48,7 @@
 extern crate embedded_hal;
 use nb::Error as NbError;
 
-use bmp280::I2cError::I2c;
+use bme280::I2cError::I2c;
 use core::marker::PhantomData;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::{Read, Write, WriteRead};
@@ -435,7 +435,9 @@ impl<'a> BME280<'a> {
     }
 
     /// Captures and processes sensor data for temperature, pressure, and humidity
-    pub fn measure(&mut self) -> Result<Measurements<I2cError<I2cErrorHal>>, I2cError<I2cErrorHal>> {
+    pub fn measure(
+        &mut self,
+    ) -> Result<Measurements<I2cError<I2cErrorHal>>, I2cError<I2cErrorHal>> {
         self.forced()?;
         self.delay.delay_ms(40_u8); // await measurement
         let measurements = self.read_data(BME280_DATA_ADDR)?;
@@ -454,7 +456,10 @@ impl<'a> BME280<'a> {
         Ok(data[0])
     }
 
-    fn read_data(&mut self, register: u8) -> Result<[u8; BME280_P_T_H_DATA_LEN], I2cError<I2cErrorHal>> {
+    fn read_data(
+        &mut self,
+        register: u8,
+    ) -> Result<[u8; BME280_P_T_H_DATA_LEN], I2cError<I2cErrorHal>> {
         let mut data: [u8; BME280_P_T_H_DATA_LEN] = [0; BME280_P_T_H_DATA_LEN];
         block!(self.i2c.write_read(self.address, &[register], &mut data)).map_err(I2cError::I2c)?;
         Ok(data)
