@@ -58,7 +58,7 @@ use w5500::*;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 
-use ads1x1x::{Ads1x1x, SlaveAddr, DataRate16Bit};
+use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
 use bme280::BME280;
 use ds93c46::*;
 use embedded_hal::blocking::i2c::WriteRead;
@@ -68,6 +68,26 @@ use stm32f103xx_hal::i2c::BlockingI2c;
 use stm32f103xx_hal::i2c::I2c;
 use stm32f103xx_hal::rcc::APB1;
 use stm32f103xx_hal::serial::Serial;
+
+macro_rules! block_while {
+    ($c:expr, $e:expr) => {
+        loop {
+            #[allow(unreachable_patterns)]
+            match $e {
+                Err(nb::Error::Other(e)) => {
+                    #[allow(unreachable_code)]
+                    break Err(nb::Error::Other(e))
+                }
+                Err(nb::Error::WouldBlock) => {
+                    if !$c {
+                        break Err(nb::Error::WouldBlock);
+                    }
+                }
+                Ok(x) => break Ok(x),
+            }
+        }
+    };
+}
 
 #[entry]
 fn main() -> ! {
@@ -395,42 +415,57 @@ fn handle_udp_requests(
                 Request::ReadSpecified(id, Bus::Custom(192)) => {
                     const START_BYTE: u8 = 0xFF;
                     const COMMAND: u8 = 0x86;
-                    block!(platform.usart1_tx.write(START_BYTE)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(COMMAND)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x79)).unwrap(); // operation cannot fail (void)
-                    let value: [u8; 9] = [
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                        block!(platform.usart1_rx.read()).unwrap_or(0),
-                    ];
-                    let checksum = 0xFF
-                        - (value[1]
-                            + value[2]
-                            + value[3]
-                            + value[4]
-                            + value[5]
-                            + value[6]
-                            + value[7])
-                        + 1;
-                    if checksum == value[8] && value[0] == START_BYTE && value[1] == COMMAND {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let float = NetworkEndian::read_u16(&value[2..4]) as f32;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], float);
-                        writer.write_all(&values[..])?;
-                        false
+                    let timeout = platform.information.uptime_ms() + 500;
+                    let info = &platform.information;
+                    let usart1_rx = &mut platform.usart1_rx;
+                    let in_time = || timeout > info.uptime_ms();
+
+                    let result = block_while!(in_time(), platform.usart1_tx.write(START_BYTE))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x01)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(COMMAND)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x00)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x00)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x00)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x00)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x00)))
+                        .and(block_while!(in_time(), platform.usart1_tx.write(0x79)))
+                        .map_err(drop)
+                        .and_then(|_| {
+                            Ok([
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                                block_while!(in_time(), usart1_rx.read()).map_err(drop)?,
+                            ])
+                        });
+
+                    if let Ok(value) = result {
+                        let checksum = 0xFF
+                            - (value[1]
+                                + value[2]
+                                + value[3]
+                                + value[4]
+                                + value[5]
+                                + value[6]
+                                + value[7])
+                            + 1;
+
+                        if checksum == value[8] && value[0] == START_BYTE && value[1] == COMMAND {
+                            Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                            let float = NetworkEndian::read_u16(&value[2..4]) as f32;
+                            let mut values = [0u8; 4];
+                            NetworkEndian::write_f32(&mut values[..], float);
+                            writer.write_all(&values[..])?;
+                            false
+                        } else {
+                            Response::NotAvailable(id).write(writer)?;
+                            false
+                        }
                     } else {
                         Response::NotAvailable(id).write(writer)?;
                         false
@@ -493,7 +528,6 @@ fn handle_udp_requests(
                     false
                 }
 
-
                 Request::ReadSpecified(id, Bus::Custom(201)) => {
                     let mut ads =
                         Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
@@ -508,7 +542,6 @@ fn handle_udp_requests(
                     false
                 }
 
-
                 Request::ReadSpecified(id, Bus::Custom(202)) => {
                     let mut ads =
                         Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
@@ -522,7 +555,6 @@ fn handle_udp_requests(
                     }
                     false
                 }
-
 
                 Request::ReadSpecified(id, Bus::Custom(203)) => {
                     let mut ads =

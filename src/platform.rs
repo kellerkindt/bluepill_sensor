@@ -243,6 +243,10 @@ impl DeviceInformation {
         self.uptime_offset + self.init.elapsed().wrapping_sub(self.init_last) as u64
     }
 
+    pub fn uptime_ms(&self) -> u64 {
+        self.uptime() / (self.frequency.0 / 1000) as u64
+    }
+
     pub fn cpu_id(&self) -> u32 {
         self.cpuid
     }
