@@ -299,6 +299,8 @@ fn main() -> ! {
             }
         }
 
+        palt.tick(&mut platform);
+
         match handle_udp_requests(
             &mut platform,
             &mut [0u8; 2048],
@@ -420,14 +422,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(192)) => {
-                    let info = &platform.information;
-                    let result = palt.update_co2(
-                        || info.uptime_ms(),
-                        platform.usart1_tx,
-                        platform.usart1_rx,
-                    );
-
-                    if let Ok(value) = result {
+                    if let Ok(value) = palt.update_co2(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut bytes = [0u8; 4];
                         NetworkEndian::write_f32(&mut bytes[..], value);
@@ -440,11 +435,10 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(193)) => {
-                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
-                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                    if let Ok(humidity) = palt.update_humidity(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value.humidity);
+                        NetworkEndian::write_f32(&mut values[..], humidity);
                         writer.write_all(&values[..])?;
                         false
                     } else {
@@ -454,11 +448,10 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(194)) => {
-                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
-                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                    if let Ok(pressure) = palt.update_pressure(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value.pressure);
+                        NetworkEndian::write_f32(&mut values[..], pressure);
                         writer.write_all(&values[..])?;
                         false
                     } else {
@@ -468,11 +461,10 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(195)) => {
-                    let mut bmp = BME280::new_primary(platform.i2c, platform.delay);
-                    if let Ok(value) = bmp.init().and_then(|_| bmp.measure()) {
+                    if let Ok(temperature) = palt.update_temperature(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value.temperature);
+                        NetworkEndian::write_f32(&mut values[..], temperature);
                         writer.write_all(&values[..])?;
                         false
                     } else {
@@ -482,9 +474,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(200)) => {
-                    let mut ads =
-                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
-                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA0)) {
+                    if let Ok(value) = palt.update_soil_moisture(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], value as f32);
@@ -496,9 +486,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(201)) => {
-                    let mut ads =
-                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
-                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA1)) {
+                    if let Ok(value) = palt.update_soil_ph(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], value as f32);
@@ -510,9 +498,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(202)) => {
-                    let mut ads =
-                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
-                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA2)) {
+                    if let Ok(value) = palt.update_water_flow(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], value as f32);
@@ -524,9 +510,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(203)) => {
-                    let mut ads =
-                        Ads1x1x::new_ads1115(I2CRefWrapper(platform.i2c), SlaveAddr::default());
-                    if let Ok(value) = block!(ads.read(&mut ads1x1x::channel::SingleA3)) {
+                    if let Ok(value) = palt.update_brightness(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], value as f32);
