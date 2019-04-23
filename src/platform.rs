@@ -60,7 +60,7 @@ pub struct Platform<'a, 'inner: 'a> {
     pub(super) network_config: NetworkConfiguration,
     pub(super) network_udp: Option<UdpSocket>,
 
-    pub(super) humidity: [Am2302<'a>; 5],
+    pub(super) humidity: [Am2302<'a>; 0],
     pub(super) eeprom: &'a mut DS93C46<'inner>,
 
     pub(super) reset: &'a mut OutputPin,

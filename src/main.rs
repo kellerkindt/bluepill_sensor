@@ -63,7 +63,7 @@ use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
 use bme280::BME280;
 use ds93c46::*;
 use embedded_hal::blocking::i2c::WriteRead;
-use palt::Palt;
+use palt::{Palt, DriverPin};
 use platform::*;
 use stm32f103xx_hal::i2c;
 use stm32f103xx_hal::i2c::BlockingI2c;
@@ -206,11 +206,13 @@ fn main() -> ! {
     // let mut am2302_01 = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
     // let mut am2302_02 = gpioa.pa10.into_open_drain_output(&mut gpioa.crh);
     // let mut am2302_03 = gpioa.pa9.into_open_drain_output(&mut gpioa.crh);
+    /*
     let mut am2302_04 = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
     let mut am2302_05 = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_06 = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_07 = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
     let mut am2302_08 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
+    */
 
     let (mut usart_tx, mut usart_rx) = Serial::usart1(
         peripherals.USART1,
@@ -260,11 +262,13 @@ fn main() -> ! {
             // Am2302::new(&mut am2302_01, &timer),
             // Am2302::new(&mut am2302_02, &timer),
             // Am2302::new(&mut am2302_03, &timer),
+            /*
             Am2302::new(&mut am2302_04, &timer),
             Am2302::new(&mut am2302_05, &timer),
             Am2302::new(&mut am2302_06, &timer),
             Am2302::new(&mut am2302_07, &timer),
             Am2302::new(&mut am2302_08, &timer),
+            */
         ],
         eeprom: &mut ds93c46,
 
@@ -288,7 +292,21 @@ fn main() -> ! {
 
     let mut tick = 0_u64;
 
-    let mut palt = Palt::default();
+    let mut heater = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
+    let mut window = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
+    let mut lights = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
+    let mut valves = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
+    let mut led_ok = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
+
+    led_ok.set_low();
+
+    let mut palt = Palt::new(
+        &mut heater,
+        &mut window,
+        &mut lights,
+        &mut valves,
+        &mut led_ok,
+    );
 
     loop {
         if tick % 100 == 0 {
@@ -474,7 +492,7 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(200)) => {
-                    if let Ok(value) = palt.update_soil_moisture(platform) {
+                    if let Ok(value) = palt.update_rain(platform) {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
                         let mut values = [0u8; 4];
                         NetworkEndian::write_f32(&mut values[..], value as f32);
@@ -518,6 +536,86 @@ fn handle_udp_requests(
                     } else {
                         Response::NotAvailable(id).write(writer)?;
                     }
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(204)) => {
+                    if let Ok(value) = palt.update_soil_humidity(platform) {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value as f32);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(210)) => {
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut values = [0u8; 4];
+                    NetworkEndian::write_f32(&mut values[..], if palt.heater.1.is_set_low() {1_f32} else {0_f32});
+                    writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(211)) => {
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut values = [0u8; 4];
+                    NetworkEndian::write_f32(&mut values[..], if palt.window.1.is_set_low() {1_f32} else {0_f32});
+                    writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(212)) => {
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut values = [0u8; 4];
+                    NetworkEndian::write_f32(&mut values[..], if palt.lights.1.is_set_low() {1_f32} else {0_f32});
+                    writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(213)) => {
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut values = [0u8; 4];
+                    NetworkEndian::write_f32(&mut values[..], if palt.valves.1.is_set_low() {1_f32} else {0_f32});
+                    writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(214)) => {
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut values = [0u8; 4];
+                    NetworkEndian::write_f32(&mut values[..], if palt.ok_led.1.is_set_low() {1_f32} else {0_f32});
+                    writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(220)) if request_content_buffer.len() >= 4 => {
+                    let now = platform.information.uptime_ms();
+                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
+                    palt.heater.force_set(now, value);
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(221)) if request_content_buffer.len() >= 4 => {
+                    let now = platform.information.uptime_ms();
+                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
+                    palt.window.force_set(now, value);
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(222)) if request_content_buffer.len() >= 4 => {
+                    let now = platform.information.uptime_ms();
+                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
+                    palt.lights.force_set(now, value);
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(223)) if request_content_buffer.len() >= 4 => {
+                    let now = platform.information.uptime_ms();
+                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
+                    palt.valves.force_set(now, value);
                     false
                 }
 
