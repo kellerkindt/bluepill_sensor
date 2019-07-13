@@ -15,6 +15,7 @@ extern crate byteorder;
 extern crate void;
 
 #[macro_use(block)]
+#[macro_use(block_while)]
 extern crate nb;
 
 extern crate ads1x1x;
@@ -27,6 +28,7 @@ mod am2302;
 mod bme280;
 mod ds93c46;
 mod palt;
+mod sht1x;
 mod platform;
 
 use stm32f103xx_hal::delay::Delay;
@@ -60,6 +62,7 @@ use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 
 use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
+use sht1x::Sht1x;
 use bme280::BME280;
 use ds93c46::*;
 use embedded_hal::blocking::i2c::WriteRead;
@@ -71,6 +74,7 @@ use stm32f103xx_hal::i2c::I2c;
 use stm32f103xx_hal::rcc::APB1;
 use stm32f103xx_hal::serial::Serial;
 
+/*
 #[macro_export]
 macro_rules! block_while {
     ($c:expr, $e:expr) => {
@@ -91,6 +95,7 @@ macro_rules! block_while {
         }
     };
 }
+*/
 
 #[entry]
 fn main() -> ! {
@@ -296,16 +301,27 @@ fn main() -> ! {
     let mut window = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
     let mut lights = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
     let mut valves = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
-    let mut led_ok = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
+    let mut ok_led = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
 
-    led_ok.set_low();
+    let mut data = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
+    let mut clock = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
+
+
+
+    let mut sht1x = Sht1x::new(
+        &mut data,
+        &mut clock,
+    );
+
+    ok_led.set_low();
 
     let mut palt = Palt::new(
         &mut heater,
         &mut window,
         &mut lights,
         &mut valves,
-        &mut led_ok,
+        &mut ok_led,
+        &mut sht1x,
     );
 
     loop {
@@ -588,6 +604,18 @@ fn handle_udp_requests(
                     let mut values = [0u8; 4];
                     NetworkEndian::write_f32(&mut values[..], if palt.ok_led.1.is_set_low() {1_f32} else {0_f32});
                     writer.write_all(&values[..])?;
+                    false
+                }
+
+                Request::ReadSpecified(id, Bus::Custom(215)) => {
+                    if let Ok(value) = palt.sht1x.read_temperature() {
+                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                        let mut values = [0u8; 4];
+                        NetworkEndian::write_f32(&mut values[..], value);
+                        writer.write_all(&values[..])?;
+                    } else {
+                        Response::NotAvailable(id).write(writer)?;
+                    }
                     false
                 }
 

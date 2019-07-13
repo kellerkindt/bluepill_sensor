@@ -1,4 +1,3 @@
-use crate::block_while;
 use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
 use bme280::BME280;
 use byteorder::ByteOrder;
@@ -10,6 +9,7 @@ use platform::Platform;
 use sensor_common::Response;
 use stm32f103xx_hal::i2c::Error as I2cError;
 use I2CRefWrapper;
+use sht1x::Sht1x;
 
 pub type TimeMillis = u64;
 
@@ -34,7 +34,7 @@ macro_rules! impl_fn_ads1115 {
     }};
 }
 
-pub struct Palt<'a> {
+pub struct Palt<'a, 'b: 'a> {
     pub co2: (TimeMillis, Option<f32>),
     pub humidity: (TimeMillis, Option<f32>),
     pub temperature: (TimeMillis, Option<f32>),
@@ -53,15 +53,18 @@ pub struct Palt<'a> {
     pub valves: (TimeMillis, &'a mut UsefulOutputPin),
 
     pub ok_led: (TimeMillis, &'a mut UsefulOutputPin),
+
+    pub sht1x: &'a mut Sht1x<'b>,
 }
 
-impl<'a> Palt<'a> {
+impl<'a, 'b: 'a> Palt<'a, 'b> {
     pub fn new(
         heater: &'a mut UsefulOutputPin,
         window: &'a mut UsefulOutputPin,
         lights: &'a mut UsefulOutputPin,
         valves: &'a mut UsefulOutputPin,
         ok_led: &'a mut UsefulOutputPin,
+        sht1x: &'a mut Sht1x<'b>,
     ) -> Self {
         Self {
             co2: (0, None),
@@ -81,6 +84,8 @@ impl<'a> Palt<'a> {
             lights: (0, lights),
             valves: (0, valves),
             ok_led: (0, ok_led),
+
+            sht1x,
         }
     }
 
@@ -285,11 +290,14 @@ impl<'a> Palt<'a> {
     }
 
     pub fn update_rain(&mut self, platform: &mut Platform) -> Result<f32, ()> {
-        impl_fn_ads1115!(self, platform, rain, SingleA1)
+        // impl_fn_ads1115!(self, platform, rain, SingleA1)
+        self.rain.0 = platform.information.uptime_ms();
+        self.rain.1 = Some(0_f32);
+        Ok(0_f32)
     }
 
     pub fn update_soil_ph(&mut self, platform: &mut Platform) -> Result<f32, ()> {
-        impl_fn_ads1115!(self, platform, soil_ph, SingleA3)
+        impl_fn_ads1115!(self, platform, soil_ph, SingleA2)
     }
 
     pub fn update_water_flow(&mut self, platform: &mut Platform) -> Result<f32, ()> {
@@ -314,10 +322,11 @@ impl<'a> Palt<'a> {
     }
 
     pub fn update_soil_humidity(&mut self, platform: &mut Platform) -> Result<f32, ()> {
-        let _ = platform;
+        impl_fn_ads1115!(self, platform, brightness, SingleA1)
+        /*let _ = platform;
         self.soil_humidity.0 = platform.information.uptime_ms();
         self.soil_humidity.1 = Some(0_f32);
-        Ok(0_f32)
+        Ok(0_f32)*/
     }
 }
 
