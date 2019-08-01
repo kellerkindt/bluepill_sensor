@@ -27,7 +27,6 @@ extern crate w5500;
 mod am2302;
 mod bme280;
 mod ds93c46;
-mod palt;
 mod sht1x;
 mod platform;
 
@@ -66,7 +65,6 @@ use sht1x::Sht1x;
 use bme280::BME280;
 use ds93c46::*;
 use embedded_hal::blocking::i2c::WriteRead;
-use palt::{Palt, DriverPin};
 use platform::*;
 use stm32f103xx_hal::i2c;
 use stm32f103xx_hal::i2c::BlockingI2c;
@@ -297,33 +295,6 @@ fn main() -> ! {
 
     let mut tick = 0_u64;
 
-    let mut heater = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
-    let mut window = gpiob.pb13.into_open_drain_output(&mut gpiob.crh);
-    let mut lights = gpiob.pb14.into_open_drain_output(&mut gpiob.crh);
-    let mut valves = gpiob.pb15.into_open_drain_output(&mut gpiob.crh);
-    let mut ok_led = gpioa.pa8.into_open_drain_output(&mut gpioa.crh);
-
-    let mut data = gpioa.pa11.into_open_drain_output(&mut gpioa.crh);
-    let mut clock = gpioa.pa12.into_open_drain_output(&mut gpioa.crh);
-
-
-
-    let mut sht1x = Sht1x::new(
-        &mut data,
-        &mut clock,
-    );
-
-    ok_led.set_low();
-
-    let mut palt = Palt::new(
-        &mut heater,
-        &mut window,
-        &mut lights,
-        &mut valves,
-        &mut ok_led,
-        &mut sht1x,
-    );
-
     loop {
         if tick % 100 == 0 {
             if led.is_set_low() {
@@ -333,15 +304,12 @@ fn main() -> ! {
             }
         }
 
-        palt.tick(&mut platform);
-
         match handle_udp_requests(
             &mut platform,
             &mut [0u8; 2048],
             &mut led_red,
             &mut led_yellow,
             &mut led_blue,
-            &mut palt,
         ) {
             Err(_e) => {
                 // writeln!(display, "Error:");
@@ -387,7 +355,6 @@ fn handle_udp_requests(
     led_red: &mut OutputPin,
     led_yellow: &mut OutputPin,
     led_blue: &mut OutputPin,
-    palt: &mut Palt,
 ) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
@@ -452,198 +419,6 @@ fn handle_udp_requests(
 
                     Response::Ok(id, Format::ValueOnly(Type::Bytes(len_response))).write(writer)?;
                     writer.write_all(&response_buffer)?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(192)) => {
-                    if let Ok(value) = palt.update_co2(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut bytes = [0u8; 4];
-                        NetworkEndian::write_f32(&mut bytes[..], value);
-                        writer.write_all(&bytes[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(193)) => {
-                    if let Ok(humidity) = palt.update_humidity(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], humidity);
-                        writer.write_all(&values[..])?;
-                        false
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                        false
-                    }
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(194)) => {
-                    if let Ok(pressure) = palt.update_pressure(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], pressure);
-                        writer.write_all(&values[..])?;
-                        false
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                        false
-                    }
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(195)) => {
-                    if let Ok(temperature) = palt.update_temperature(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], temperature);
-                        writer.write_all(&values[..])?;
-                        false
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                        false
-                    }
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(200)) => {
-                    if let Ok(value) = palt.update_rain(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value as f32);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(201)) => {
-                    if let Ok(value) = palt.update_soil_ph(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value as f32);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(202)) => {
-                    if let Ok(value) = palt.update_water_flow(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value as f32);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(203)) => {
-                    if let Ok(value) = palt.update_brightness(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value as f32);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(204)) => {
-                    if let Ok(value) = palt.update_soil_humidity(platform) {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value as f32);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(210)) => {
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut values = [0u8; 4];
-                    NetworkEndian::write_f32(&mut values[..], if palt.heater.1.is_set_low() {1_f32} else {0_f32});
-                    writer.write_all(&values[..])?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(211)) => {
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut values = [0u8; 4];
-                    NetworkEndian::write_f32(&mut values[..], if palt.window.1.is_set_low() {1_f32} else {0_f32});
-                    writer.write_all(&values[..])?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(212)) => {
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut values = [0u8; 4];
-                    NetworkEndian::write_f32(&mut values[..], if palt.lights.1.is_set_low() {1_f32} else {0_f32});
-                    writer.write_all(&values[..])?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(213)) => {
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut values = [0u8; 4];
-                    NetworkEndian::write_f32(&mut values[..], if palt.valves.1.is_set_low() {1_f32} else {0_f32});
-                    writer.write_all(&values[..])?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(214)) => {
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut values = [0u8; 4];
-                    NetworkEndian::write_f32(&mut values[..], if palt.ok_led.1.is_set_low() {1_f32} else {0_f32});
-                    writer.write_all(&values[..])?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(215)) => {
-                    if let Ok(value) = palt.sht1x.read_temperature() {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut values = [0u8; 4];
-                        NetworkEndian::write_f32(&mut values[..], value);
-                        writer.write_all(&values[..])?;
-                    } else {
-                        Response::NotAvailable(id).write(writer)?;
-                    }
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(220)) if request_content_buffer.len() >= 4 => {
-                    let now = platform.information.uptime_ms();
-                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
-                    palt.heater.force_set(now, value);
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(221)) if request_content_buffer.len() >= 4 => {
-                    let now = platform.information.uptime_ms();
-                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
-                    palt.window.force_set(now, value);
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(222)) if request_content_buffer.len() >= 4 => {
-                    let now = platform.information.uptime_ms();
-                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
-                    palt.lights.force_set(now, value);
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(223)) if request_content_buffer.len() >= 4 => {
-                    let now = platform.information.uptime_ms();
-                    let value = NetworkEndian::read_f32(&request_content_buffer[..]);
-                    palt.valves.force_set(now, value);
                     false
                 }
 
