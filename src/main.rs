@@ -15,7 +15,7 @@ extern crate byteorder;
 extern crate void;
 
 #[macro_use(block)]
-#[macro_use(block_while)]
+//#[macro_use(block_while)]
 extern crate nb;
 
 extern crate ads1x1x;
@@ -44,6 +44,7 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::serial::Read as EmbeddedSerialRead;
 use embedded_hal::serial::Write as EmbeddedSerialWrite;
 use embedded_hal::spi::FullDuplex;
+use embedded_hal::digital::v2;
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
@@ -350,7 +351,7 @@ fn main() -> ! {
 }
 
 fn handle_udp_requests(
-    platform: &mut Platform,
+    platform: &mut Platform<impl v2::OutputPin<Error = ()>, impl FullDuplex<u8, Error = spi::Error>>,
     buffer: &mut [u8],
     led_red: &mut OutputPin,
     led_yellow: &mut OutputPin,
@@ -593,7 +594,7 @@ fn handle_udp_requests_legacy(
 }
 
 fn prepare_requested_on_one_wire(
-    platform: &mut Platform,
+    platform: &mut Platform<impl v2::OutputPin<Error = ()>, impl FullDuplex<u8, Error = spi::Error>>,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
 ) -> Result<u16, HandleError> {
@@ -621,7 +622,7 @@ fn prepare_requested_on_one_wire(
 }
 
 fn transmit_requested_on_one_wire(
-    platform: &mut Platform,
+    platform: &mut Platform<impl v2::OutputPin<Error = ()>, impl FullDuplex<u8, Error = spi::Error>>,
     reader: &mut sensor_common::Read,
     writer: &mut sensor_common::Write,
 ) -> Result<(), HandleError> {
@@ -669,6 +670,13 @@ pub enum HandleError {
     NotMagicCrcAtStart,
     CrcError,
     I2c(NbError<I2cError>),
+    NetworkError(TransferError<spi::Error, ()>)
+}
+
+impl From<TransferError<spi::Error, ()>> for HandleError {
+    fn from(e: TransferError<spi::Error, ()>) -> Self {
+        HandleError::NetworkError(e)
+    }
 }
 
 impl From<spi::Error> for HandleError {

@@ -11,6 +11,7 @@ use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::digital::OutputPin;
+use embedded_hal::digital::v2::OutputPin as OutputPinV2;
 use embedded_hal::serial::Read as SerialRead;
 use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
@@ -43,19 +44,19 @@ use onewire::Sensor as OneWireSensor;
 pub const SOCKET_UDP: Socket = Socket::Socket0;
 pub const SOCKET_UDP_PORT: u16 = 51;
 
-pub struct Platform<'a, 'inner: 'a> {
+pub struct Platform<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> {
     pub(super) information: DeviceInformation,
 
     // periphery
     pub(super) delay: &'a mut Delay,
 
     pub(super) onewire: &'a mut [&'a mut OneWire<'inner>],
-    pub(super) spi: &'a mut FullDuplex<u8, Error = spi::Error>,
+    pub(super) spi: &'a mut Spi,
     pub(super) i2c: &'a mut WriteRead<Error = NbError<I2cError>>,
     pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Void>,
     pub(super) usart1_rx: &'a mut SerialRead<u8, Error = SerialError>,
 
-    pub(super) network: &'a mut W5500<'inner>,
+    pub(super) network: &'a mut W5500<'a, CS>,
     pub(super) network_reset: &'a mut OutputPin,
     pub(super) network_config: NetworkConfiguration,
     pub(super) network_udp: Option<UdpSocket>,
@@ -66,7 +67,7 @@ pub struct Platform<'a, 'inner: 'a> {
     pub(super) reset: &'a mut OutputPin,
 }
 
-impl<'a, 'inner: 'a> Platform<'a, 'inner> {
+impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> Platform<'a, 'inner, CS, Spi> {
     pub fn save_network_configuration(&mut self) -> Result<(), ()> {
         match self.network_config.write(self.eeprom, self.spi, self.delay) {
             Err(_) => Err(()),
@@ -81,7 +82,7 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
         }
     }
 
-    pub fn init_network(&mut self) -> Result<(), spi::Error> {
+    pub fn init_network(&mut self) -> Result<(), TransferError<Spi::Error, CS::Error>> {
         let mut active = self.network.activate(self.spi)?;
         let active = &mut active;
 
@@ -117,20 +118,19 @@ impl<'a, 'inner: 'a> Platform<'a, 'inner> {
     pub fn receive_udp(
         &mut self,
         buffer: &mut [u8],
-    ) -> Result<Option<(IpAddress, u16, usize)>, spi::Error> {
+    ) -> Result<Option<(IpAddress, u16, usize)>, TransferError<Spi::Error, CS::Error>> {
         let mut active = self.network.activate(self.spi)?;
         let active = &mut active;
-        let socket = self.network_udp.as_ref().ok_or(spi::Error::ModeFault)?;
+        let socket = self.network_udp.as_ref().ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
 
         (active, socket).receive(buffer)
     }
 
-    pub fn send_udp(&mut self, host: &IpAddress, port: u16, data: &[u8]) -> Result<(), spi::Error> {
+    pub fn send_udp(&mut self, host: &IpAddress, port: u16, data: &[u8]) -> Result<(), TransferError<spi::Error, CS::Error>> {
         let mut active = self.network.activate(self.spi)?;
-        let active = &mut active;
-        let socket = self.network_udp.as_ref().ok_or(spi::Error::ModeFault)?;
+        let socket = self.network_udp.as_ref().ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
 
-        (active, socket).blocking_send(host, port, data)
+        (&mut active, socket).blocking_send(host, port, data)
     }
 
     /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.
