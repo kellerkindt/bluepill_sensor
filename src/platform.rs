@@ -1,82 +1,99 @@
 use void::Void;
 
-use stm32f103xx_hal::delay::Delay;
-use stm32f103xx_hal::spi;
-use stm32f103xx_hal::time::Hertz;
-use stm32f103xx_hal::time::Instant;
-use stm32f103xx_hal::time::MonoTimer;
-
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
-use embedded_hal::digital::OutputPin;
-use embedded_hal::digital::v2::OutputPin as OutputPinV2;
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::serial::Read as SerialRead;
 use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
-
 use nb::Error as NbError;
-use stm32f103xx_hal::device::USART1;
-use stm32f103xx_hal::gpio::gpioa::PA10;
-use stm32f103xx_hal::gpio::gpioa::PA9;
-use stm32f103xx_hal::gpio::Alternate;
-use stm32f103xx_hal::gpio::Floating;
-use stm32f103xx_hal::gpio::Input;
-use stm32f103xx_hal::gpio::PushPull;
-use stm32f103xx_hal::i2c::Error as I2cError;
-use stm32f103xx_hal::serial::Error as SerialError;
-use stm32f103xx_hal::serial::Serial;
+use stm32f1xx_hal::delay::Delay;
+use stm32f1xx_hal::device::USART1;
+use stm32f1xx_hal::gpio::gpioa::PA10;
+use stm32f1xx_hal::gpio::gpioa::PA9;
+use stm32f1xx_hal::gpio::Alternate;
+use stm32f1xx_hal::gpio::Floating;
+use stm32f1xx_hal::gpio::Input;
+use stm32f1xx_hal::gpio::PushPull;
+use stm32f1xx_hal::i2c::Error as I2cError;
+use stm32f1xx_hal::serial::Error as SerialError;
+use stm32f1xx_hal::serial::Serial;
+use stm32f1xx_hal::spi;
+use stm32f1xx_hal::time::Hertz;
+use stm32f1xx_hal::time::Instant;
+use stm32f1xx_hal::time::MonoTimer;
 
-use NetworkConfiguration;
-
-use ds18b20;
-
-use am2302::Am2302;
-
-use w5500::*;
-
-use ds93c46::DS93C46;
+use crate::am2302::Am2302;
+use crate::ds93c46::DS93C46;
+use crate::NetworkConfiguration;
+use core::convert::Infallible;
 use onewire;
+use onewire::ds18b20;
 use onewire::OneWire;
 use onewire::Sensor as OneWireSensor;
+use w5500::*;
 
 pub const SOCKET_UDP: Socket = Socket::Socket0;
 pub const SOCKET_UDP_PORT: u16 = 51;
 
-pub struct Platform<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> {
+pub struct Platform<
+    'a,
+    CS: OutputPin<Error = Infallible>,
+    Spi: FullDuplex<u8, Error = spi::Error>,
+    NetworkReset: OutputPin<Error = Infallible>,
+    ChipSelectEeprom: OutputPin<Error = Infallible>,
+    PlatformReset: OutputPin<Error = Infallible>,
+    OneWireOpenDrain: onewire::OpenDrainOutput<Error = Infallible>,
+> {
     pub(super) information: DeviceInformation,
 
     // periphery
     pub(super) delay: &'a mut Delay,
 
-    pub(super) onewire: &'a mut [&'a mut OneWire<'inner>],
+    pub(super) onewire: OneWire<OneWireOpenDrain>,
     pub(super) spi: &'a mut Spi,
     pub(super) i2c: &'a mut WriteRead<Error = NbError<I2cError>>,
-    pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Void>,
+    pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Infallible>,
     pub(super) usart1_rx: &'a mut SerialRead<u8, Error = SerialError>,
 
     pub(super) network: &'a mut W5500<'a, CS>,
-    pub(super) network_reset: &'a mut OutputPin,
+    pub(super) network_reset: NetworkReset,
     pub(super) network_config: NetworkConfiguration,
     pub(super) network_udp: Option<UdpSocket>,
 
     pub(super) humidity: [Am2302<'a>; 0],
-    pub(super) eeprom: &'a mut DS93C46<'inner>,
+    pub(super) eeprom: DS93C46<ChipSelectEeprom>,
 
-    pub(super) reset: &'a mut OutputPin,
+    pub(super) reset: PlatformReset,
 }
 
-impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> Platform<'a, 'inner, CS, Spi> {
+impl<
+        'a,
+        CS: OutputPin<Error = Infallible>,
+        Spi: FullDuplex<u8, Error = spi::Error>,
+        NetworkReset: OutputPin<Error = Infallible>,
+        ChipSelectEeprom: OutputPin<Error = Infallible>,
+        PlatformReset: OutputPin<Error = Infallible>,
+        OneWireOpenDrain: onewire::OpenDrainOutput<Error = Infallible>,
+    > Platform<'a, CS, Spi, NetworkReset, ChipSelectEeprom, PlatformReset, OneWireOpenDrain>
+{
     pub fn save_network_configuration(&mut self) -> Result<(), ()> {
-        match self.network_config.write(self.eeprom, self.spi, self.delay) {
+        match self
+            .network_config
+            .write(&mut self.eeprom, self.spi, self.delay)
+        {
             Err(_) => Err(()),
             Ok(_) => Ok(()),
         }
     }
 
     pub fn load_network_configuration(&mut self) -> Result<(), ()> {
-        match self.network_config.load(self.eeprom, self.spi, self.delay) {
+        match self
+            .network_config
+            .load(&mut self.eeprom, self.spi, self.delay)
+        {
             Err(_) => Err(()),
             Ok(_) => Ok(()),
         }
@@ -105,14 +122,8 @@ impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> P
         Ok(())
     }
 
-    pub fn init_onewire(&mut self) -> Result<(), onewire::Error> {
-        let mut result = Ok(());
-        for w in self.onewire.iter_mut() {
-            if let Err(e) = w.reset(self.delay) {
-                result = Err(e);
-            }
-        }
-        result
+    pub fn init_onewire(&mut self) -> Result<(), onewire::Error<Infallible>> {
+        self.onewire.reset(self.delay).map(drop)
     }
 
     pub fn receive_udp(
@@ -121,14 +132,25 @@ impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> P
     ) -> Result<Option<(IpAddress, u16, usize)>, TransferError<Spi::Error, CS::Error>> {
         let mut active = self.network.activate(self.spi)?;
         let active = &mut active;
-        let socket = self.network_udp.as_ref().ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
+        let socket = self
+            .network_udp
+            .as_ref()
+            .ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
 
         (active, socket).receive(buffer)
     }
 
-    pub fn send_udp(&mut self, host: &IpAddress, port: u16, data: &[u8]) -> Result<(), TransferError<spi::Error, CS::Error>> {
+    pub fn send_udp(
+        &mut self,
+        host: &IpAddress,
+        port: u16,
+        data: &[u8],
+    ) -> Result<(), TransferError<spi::Error, CS::Error>> {
         let mut active = self.network.activate(self.spi)?;
-        let socket = self.network_udp.as_ref().ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
+        let socket = self
+            .network_udp
+            .as_ref()
+            .ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
 
         (&mut active, socket).blocking_send(host, port, data)
     }
@@ -138,12 +160,10 @@ impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> P
         &mut self,
         mut f: F,
     ) -> Result<(), E> {
-        'outer: for wire in self.onewire.iter_mut() {
-            let mut search = onewire::DeviceSearch::new();
-            while let Ok(Some(device)) = wire.search_next(&mut search, self.delay) {
-                if !f(device)? {
-                    break 'outer;
-                }
+        let mut search = onewire::DeviceSearch::new();
+        while let Ok(Some(device)) = self.onewire.search_next(&mut search, self.delay) {
+            if !f(device)? {
+                break;
             }
         }
         Ok(())
@@ -153,21 +173,17 @@ impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> P
     /// time in milliseconds the device needs until ready for read.
     /// Fails if the device is unsupported.
     pub fn onewire_prepare_read(&mut self, device: &onewire::Device) -> Result<u16, ()> {
-        let mut result = Err(());
         match device.family_code() {
             ds18b20::FAMILY_CODE => {
                 if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
-                    for wire in self.onewire.iter_mut() {
-                        if let Ok(time) = dev.start_measurement(wire, self.delay) {
-                            result = Ok(time);
-                            break;
-                        }
+                    if let Ok(time) = dev.start_measurement(&mut self.onewire, self.delay) {
+                        return Ok(time);
                     }
                 }
             }
             _ => {}
         }
-        result
+        Err(())
     }
 
     /// Reads from the given `onewire::Device`. Returns the value as f32.
@@ -180,13 +196,11 @@ impl<'a, 'inner: 'a, CS: OutputPinV2, Spi: FullDuplex<u8, Error = spi::Error>> P
         match device.family_code() {
             ds18b20::FAMILY_CODE => {
                 if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
-                    for wire in self.onewire.iter_mut() {
-                        for _ in 0..retry_count_on_crc_error {
-                            match dev.read_temperature(wire, self.delay) {
-                                Ok(value) => return Ok(value as f32),
-                                Err(onewire::Error::CrcMismatch(_, _)) => continue,
-                                _ => break,
-                            }
+                    for _ in 0..retry_count_on_crc_error {
+                        match dev.read_temperature(&mut self.onewire, self.delay) {
+                            Ok(value) => return Ok(value as f32),
+                            Err(onewire::Error::CrcMismatch(_, _)) => continue,
+                            _ => break,
                         }
                     }
                 }

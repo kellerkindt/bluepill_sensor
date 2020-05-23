@@ -3,7 +3,7 @@ use embedded_hal::digital::InputPin;
 use embedded_hal::digital::OutputPin;
 use embedded_hal::timer::Cancel;
 use embedded_hal::timer::CountDown;
-use stm32f103xx_hal::time::MonoTimer;
+use stm32f1xx_hal::time::MonoTimer;
 
 pub trait OpenDrainOutput: OutputPin + InputPin {}
 impl<P: OutputPin + InputPin> OpenDrainOutput for P {}

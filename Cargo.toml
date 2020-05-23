@@ -7,6 +7,7 @@ keywords = ["arm", "cortex-m", "onewire", "ethernet"]
 categories = ["embedded", "no-std"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kellerkindt/bluepill_sensor"
+edition = "2018"
 
 [profile.dev]
 codegen-units = 1
@@ -24,7 +25,11 @@ panic-halt = "0.2.0"
 cortex-m-rt = "0.6.7"
 void = {version = "1.0.2", default-features = false }
 ads1x1x = "0.2.0"
-cortex-m = "0.5.7"
+cortex-m = "0.6.2"
+
+[dependencies.stm32f1xx-hal]
+version = "0.5.3"
+features = ["stm32f103"]
 
 # [dependencies.shared-bus]
 # version = "0.1.4"
@@ -43,6 +48,6 @@ path = "../pcd8544"
 [dependencies.sensor_common]
 path = "../sensor_common"
 
-[dependencies.stm32f103xx-hal]
-git = "https://github.com/japaric/stm32f103xx-hal.git"
-rev = "da4de59"
+# [dependencies.stm32f103xx-hal]
+# git = "https://github.com/japaric/stm32f103xx-hal.git"
+# rev = "da4de59"

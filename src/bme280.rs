@@ -52,8 +52,8 @@ use bme280::I2cError::I2c;
 use core::marker::PhantomData;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::{Read, Write, WriteRead};
-use stm32f103xx_hal::delay::Delay;
-use stm32f103xx_hal::i2c::Error as I2cErrorHal;
+use stm32f1xx_hal::delay::Delay;
+use stm32f1xx_hal::i2c::Error as I2cErrorHal;
 
 const BME280_I2C_ADDR_PRIMARY: u8 = 0x76;
 const BME280_I2C_ADDR_SECONDARY: u8 = 0x77;

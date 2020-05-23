@@ -1,7 +1,8 @@
 #!/bin/bash
 
 unset CARGO_INCREMENTAL
-BIN="../target/thumbv7m-none-eabi/release/bluepill_sensor"
+BIN="${CARGO_TARGET_DIR:-../target}/thumbv7m-none-eabi/release/bluepill_sensor"
+echo $BIN
 
 ./build.sh \
  && openocd \
@@ -13,4 +14,4 @@ BIN="../target/thumbv7m-none-eabi/release/bluepill_sensor"
 	-c "flash write_image erase $BIN" \
 	-c "verify_image $BIN" \
 	-c "reset run" \
-	-c shutdown
+        -c shutdown

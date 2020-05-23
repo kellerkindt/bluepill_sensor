@@ -1,13 +1,13 @@
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::digital::OutputPin;
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::FullDuplex;
 
-pub struct DS93C46<'a> {
-    cs: &'a mut OutputPin,
+pub struct DS93C46<ChipSelect: OutputPin> {
+    cs: ChipSelect,
 }
 
-impl<'a> DS93C46<'a> {
-    pub fn new(cs: &'a mut OutputPin) -> DS93C46 {
+impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
+    pub fn new(cs: ChipSelect) -> Self {
         DS93C46 { cs }
     }
     pub fn enable_write<E>(
@@ -16,10 +16,11 @@ impl<'a> DS93C46<'a> {
         delay: &mut DelayMs<u16>,
     ) -> Result<(), E> {
         self.select_chip();
-        let result = DS93C46::write_byte(spi, 0x02);
-        let result = DS93C46::write_byte(spi, 0x60);
+        let result_1 = Self::write_byte(spi, 0x02);
+        let result = Self::write_byte(spi, 0x60);
         self.deselect_chip();
         delay.delay_ms(10);
+        result_1?;
         result
     }
 
@@ -29,8 +30,8 @@ impl<'a> DS93C46<'a> {
         delay: &mut DelayMs<u16>,
     ) -> Result<(), E> {
         self.select_chip();
-        let result_1 = DS93C46::write_byte(spi, 0x02);
-        let result = DS93C46::write_byte(spi, 0x00);
+        let result_1 = Self::write_byte(spi, 0x02);
+        let result = Self::write_byte(spi, 0x00);
         self.deselect_chip();
         delay.delay_ms(10);
         result_1?;
@@ -58,9 +59,9 @@ impl<'a> DS93C46<'a> {
     ) -> Result<(), E> {
         for i in 0..content.len() {
             self.select_chip();
-            DS93C46::write_byte(spi, 0x02)?;
-            DS93C46::write_byte(spi, 0x80 | (address + i as u8))?;
-            DS93C46::write_byte(spi, content[i])?;
+            Self::write_byte(spi, 0x02)?;
+            Self::write_byte(spi, 0x80 | (address + i as u8))?;
+            Self::write_byte(spi, content[i])?;
             self.deselect_chip();
             delay.delay_ms(10);
         }
@@ -88,11 +89,11 @@ impl<'a> DS93C46<'a> {
     ) -> Result<(), E> {
         for i in 0..target.len() {
             self.select_chip();
-            DS93C46::write_byte(spi, 0x03)?;
-            DS93C46::write_byte(spi, !0x80 & (address + i as u8))?;
+            Self::write_byte(spi, 0x03)?;
+            Self::write_byte(spi, !0x80 & (address + i as u8))?;
             //delay.delay_ms(5);
-            let b1 = DS93C46::read_byte(spi)?;
-            let b2 = DS93C46::read_byte(spi)?;
+            let b1 = Self::read_byte(spi)?;
+            let b2 = Self::read_byte(spi)?;
             self.deselect_chip();
             target[i] = b1 << 1 | b2 >> 7;
             // delay.delay_us(100);
