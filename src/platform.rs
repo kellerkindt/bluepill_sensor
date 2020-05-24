@@ -1,5 +1,10 @@
 use void::Void;
 
+use crate::am2302::Am2302;
+use crate::ds93c46::DS93C46;
+use crate::LongTimeFreqMeasurement;
+use crate::NetworkConfiguration;
+use core::convert::Infallible;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
@@ -9,30 +14,31 @@ use embedded_hal::serial::Read as SerialRead;
 use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
 use nb::Error as NbError;
+use onewire;
+use onewire::ds18b20;
+use onewire::OneWire;
+use onewire::Sensor as OneWireSensor;
 use stm32f1xx_hal::delay::Delay;
 use stm32f1xx_hal::device::USART1;
 use stm32f1xx_hal::gpio::gpioa::PA10;
+use stm32f1xx_hal::gpio::gpioa::PA12;
+use stm32f1xx_hal::gpio::gpioa::PA15;
 use stm32f1xx_hal::gpio::gpioa::PA9;
+use stm32f1xx_hal::gpio::gpiob::PB3;
+use stm32f1xx_hal::gpio::gpiob::PB4;
 use stm32f1xx_hal::gpio::Alternate;
 use stm32f1xx_hal::gpio::Floating;
 use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::gpio::PushPull;
 use stm32f1xx_hal::i2c::Error as I2cError;
+use stm32f1xx_hal::pwm_input::PwmInput;
+use stm32f1xx_hal::rcc::Clocks;
 use stm32f1xx_hal::serial::Error as SerialError;
 use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::time::Hertz;
 use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
-
-use crate::am2302::Am2302;
-use crate::ds93c46::DS93C46;
-use crate::NetworkConfiguration;
-use core::convert::Infallible;
-use onewire;
-use onewire::ds18b20;
-use onewire::OneWire;
-use onewire::Sensor as OneWireSensor;
 use w5500::*;
 
 pub const SOCKET_UDP: Socket = Socket::Socket0;
@@ -65,6 +71,11 @@ pub struct Platform<
 
     pub(super) humidity: [Am2302<'a>; 0],
     pub(super) eeprom: DS93C46<ChipSelectEeprom>,
+
+    pub(super) ltfm1: LongTimeFreqMeasurement,
+    pub(super) ltfm2: LongTimeFreqMeasurement,
+    pub(super) ltfm3: LongTimeFreqMeasurement,
+    pub(super) ltfm4: LongTimeFreqMeasurement,
 
     pub(super) reset: PlatformReset,
 }
@@ -258,7 +269,11 @@ impl DeviceInformation {
     }
 
     pub fn uptime_ms(&self) -> u64 {
-        self.uptime() / (self.frequency.0 / 1000) as u64
+        self.uptime() / (self.frequency.0 / 1_000) as u64
+    }
+
+    pub fn uptime_us(&self) -> u64 {
+        self.uptime() / (self.frequency.0 / 1_000_000) as u64
     }
 
     pub fn cpu_id(&self) -> u32 {

@@ -29,8 +29,16 @@ mod ds93c46;
 mod platform;
 mod sht1x;
 
+use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
+use am2302::Am2302;
+use byteorder::ByteOrder;
+use byteorder::NetworkEndian;
+use core::convert::Infallible;
+use core::result::*;
+use ds93c46::*;
 use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::digital::v2;
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
@@ -40,39 +48,33 @@ use embedded_hal::spi::FullDuplex;
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
 use embedded_hal::spi::Polarity;
-use stm32f1xx_hal::delay::Delay;
-use stm32f1xx_hal::i2c::Error as I2cError;
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::spi;
-use stm32f1xx_hal::spi::Spi;
-
-use core::result::*;
 use nb::Error as NbError;
-
-use am2302::Am2302;
 use onewire::OneWire;
 use onewire::{compute_partial_crc8 as crc8, Device};
-use sensor_common::*;
-use w5500::*;
-
-use byteorder::ByteOrder;
-use byteorder::NetworkEndian;
-
-use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
-use core::convert::Infallible;
-use ds93c46::*;
-use embedded_hal::blocking::i2c::WriteRead;
 use platform::*;
+use sensor_common::*;
 use sht1x::Sht1x;
+use stm32f1xx_hal::delay::Delay;
+use stm32f1xx_hal::gpio::gpiob::PB4;
+use stm32f1xx_hal::gpio::gpiob::PB5;
+use stm32f1xx_hal::gpio::Floating;
+use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::i2c;
 use stm32f1xx_hal::i2c::BlockingI2c;
+use stm32f1xx_hal::i2c::Error as I2cError;
 use stm32f1xx_hal::i2c::I2c;
-use stm32f1xx_hal::pwm_input::Configuration;
+use stm32f1xx_hal::pac::TIM3;
+use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::pwm_input::{Configuration, PwmInput, ReadMode};
 use stm32f1xx_hal::rcc::APB1;
 use stm32f1xx_hal::serial::Config;
 use stm32f1xx_hal::serial::Serial;
+use stm32f1xx_hal::spi;
+use stm32f1xx_hal::spi::Spi;
+use stm32f1xx_hal::timer::Tim3PartialRemap;
 use stm32f1xx_hal::timer::Timer;
 use void::Void;
+use w5500::*;
 
 /*
 #[macro_export]
@@ -148,6 +150,13 @@ fn main() -> ! {
     let mut cs_w5500 = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
     let mut rs = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
 
+    let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+
+    let pb4 = pb4.into_floating_input(&mut gpiob.crl);
+    let pb3 = pb3.into_floating_input(&mut gpiob.crl);
+    let pa15 = pa15.into_floating_input(&mut gpioa.crh);
+    let pa12 = gpioa.pa12.into_floating_input(&mut gpioa.crh);
+
     let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
     self_reset.set_high();
 
@@ -193,6 +202,7 @@ fn main() -> ! {
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
     // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
     // unsafe { cp.DCB.demcr.modify(|w| w | (0x01 << 24)); }
+    cp.DCB.enable_trace();
     let timer = ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, clocks);
 
     // let countdown = ::stm32f1xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
@@ -242,21 +252,7 @@ fn main() -> ! {
 
     // let mut w5500 = W5500ChipSelect::new(&mut spi, &mut cs_w5500);
     let mut ds93c46 = DS93C46::new(cs_eeprom);
-
     let mut wire = OneWire::new(one, false);
-
-    {
-        let mut dbg = peripherals.DBGMCU;
-        let (_pa15, _pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
-        let pb5 = gpiob.pb5;
-
-        let pwm_input = Timer::tim3(peripherals.TIM3, &clocks, &mut rcc.apb1).pwm_input(
-            (pb4, pb5),
-            &mut afio.mapr,
-            &mut dbg,
-            Configuration::Frequency(10.khz()),
-        );
-    }
 
     let mut platform = Platform {
         information,
@@ -287,6 +283,11 @@ fn main() -> ! {
             */
         ],
         eeprom: ds93c46,
+
+        ltfm1: LongTimeFreqMeasurement::new(),
+        ltfm2: LongTimeFreqMeasurement::new(),
+        ltfm3: LongTimeFreqMeasurement::new(),
+        ltfm4: LongTimeFreqMeasurement::new(),
 
         reset: self_reset,
     };
@@ -354,6 +355,21 @@ fn main() -> ! {
                     platform.reset();
                 }
             }
+        }
+        {
+            let time_us = platform.information.uptime_us();
+            platform
+                .ltfm1
+                .update(time_us, 10_000_000, pa12.is_high().unwrap_or(false));
+            platform
+                .ltfm2
+                .update(time_us, 10_000_000, pa15.is_high().unwrap_or(false));
+            platform
+                .ltfm3
+                .update(time_us, 10_000_000, pb3.is_high().unwrap_or(false));
+            platform
+                .ltfm4
+                .update(time_us, 10_000_000, pb4.is_high().unwrap_or(false));
         }
 
         // delay.delay_ms(100_u16);
@@ -447,6 +463,27 @@ fn handle_udp_requests(
                     false
                 }
 
+                Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
+                    let min_age = platform
+                        .information
+                        .uptime_us()
+                        .checked_sub(10_000_000)
+                        .unwrap_or(0);
+                    let result = match cid {
+                        251 => platform.ltfm1.value(min_age),
+                        252 => platform.ltfm2.value(min_age),
+                        253 => platform.ltfm3.value(min_age),
+                        254 => platform.ltfm4.value(min_age),
+                        _ => unreachable!(),
+                    }
+                    .unwrap_or(0f32);
+
+                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                    let mut buffer = [0u8; 4];
+                    NetworkEndian::write_f32(&mut buffer[..], result);
+                    writer.write_all(&buffer[..])?;
+                    false
+                }
                 Request::ReadSpecified(id, Bus::Custom(255)) => {
                     block!(platform.usart1_tx.write(0xFF)).unwrap(); // operation cannot fail (void)
                     block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
@@ -505,6 +542,50 @@ fn handle_udp_requests(
     } else {
         Ok(None)
     }
+}
+
+fn determine_freq(
+    info: &DeviceInformation,
+    pin: &impl InputPin<Error = Infallible>,
+) -> Result<f32, ()> {
+    let start = info.uptime_ms();
+    loop {
+        // wait for high
+        if let Ok(true) = pin.is_high() {
+            break Ok(());
+        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
+            break Err(());
+        }
+    }
+    .and_then(|_| {
+        loop {
+            // wait for low
+            if let Ok(false) = pin.is_high() {
+                break Ok(info.uptime_us());
+            } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
+                break Err(());
+            }
+        }
+    })
+    .and_then(|v| loop {
+        // wait for high
+        if let Ok(true) = pin.is_high() {
+            break Ok(v);
+        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
+            break Err(());
+        }
+    })
+    .and_then(|v| loop {
+        // wait for low
+        if let Ok(false) = pin.is_high() {
+            let freq_time_us = info.uptime_us().wrapping_sub(v);
+            let freq_time_s = freq_time_us as f32 / 1_000_000.0_f32;
+            let freq = 1.0_f32 / freq_time_s;
+            break Ok(freq as f32);
+        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
+            break Err(());
+        }
+    })
 }
 
 fn handle_udp_requests_legacy(
@@ -801,5 +882,89 @@ impl Default for NetworkConfiguration {
             subnet: IpAddress::new(255, 255, 255, 0),
             gateway: IpAddress::new(192, 168, 3, 1),
         }
+    }
+}
+
+pub struct LongTimeFreqMeasurement {
+    last_value: Option<(u64, f32)>,
+    current_start: Option<u64>,
+    current: FreqState,
+}
+
+impl LongTimeFreqMeasurement {
+    pub const fn new() -> Self {
+        LongTimeFreqMeasurement {
+            last_value: None,
+            current_start: None,
+            current: FreqState::new(),
+        }
+    }
+
+    pub fn update(&mut self, time_us: u64, threshold_us: u64, state: bool) {
+        if let Some(start_time) = self.current_start {
+            if time_us.wrapping_sub(start_time) > threshold_us {
+                self.current_start = Some(time_us);
+                self.current.reset();
+            }
+        }
+        let reset = self
+            .current
+            .update(time_us, state)
+            .map(|result_us| {
+                let freq_time_s = result_us as f32 / 1_000_000.0_f32;
+                let freq = 1.0_f32 / freq_time_s;
+                self.last_value = Some((time_us, freq));
+            })
+            .is_some();
+        if reset {
+            self.current_start = Some(time_us);
+        }
+    }
+
+    pub fn value(&self, min_age: u64) -> Option<f32> {
+        if let Some((time, value)) = self.last_value {
+            if time >= min_age {
+                return Some(value);
+            }
+        }
+        None
+    }
+}
+
+pub enum FreqState {
+    WaitingForFirstHigh,
+    WaitingForFirstLow,
+    WaitingForSecHigh(u64),
+    WaitingForSecLow(u64),
+}
+
+impl FreqState {
+    pub const fn new() -> Self {
+        FreqState::WaitingForFirstHigh
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::new()
+    }
+
+    pub fn update(&mut self, time: u64, state: bool) -> Option<u64> {
+        match self {
+            FreqState::WaitingForFirstHigh if state => {
+                *self = FreqState::WaitingForFirstLow;
+            }
+            FreqState::WaitingForFirstLow if !state => {
+                *self = FreqState::WaitingForSecHigh(time);
+            }
+            FreqState::WaitingForSecHigh(start) if state => {
+                *self = FreqState::WaitingForSecLow(*start);
+            }
+            FreqState::WaitingForSecLow(start) if !state => {
+                let diff = time.wrapping_sub(*start);
+                self.reset();
+                return Some(diff);
+            }
+            _ => {}
+        }
+        None
     }
 }
