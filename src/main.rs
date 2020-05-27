@@ -358,18 +358,19 @@ fn main() -> ! {
         }
         {
             let time_us = platform.information.uptime_us();
+            const MAX_UPDATE_THRESHOLD_US: u64 = 300 * /*1s*/ 1_000_000;
             platform
                 .ltfm1
-                .update(time_us, 10_000_000, pa12.is_high().unwrap_or(false));
+                .update(time_us, pa12.is_high().unwrap_or(false));
             platform
                 .ltfm2
-                .update(time_us, 10_000_000, pa15.is_high().unwrap_or(false));
+                .update(time_us, pa15.is_high().unwrap_or(false));
             platform
                 .ltfm3
-                .update(time_us, 10_000_000, pb3.is_high().unwrap_or(false));
+                .update(time_us, pb3.is_high().unwrap_or(false));
             platform
                 .ltfm4
-                .update(time_us, 10_000_000, pb4.is_high().unwrap_or(false));
+                .update(time_us, pb4.is_high().unwrap_or(false));
         }
 
         // delay.delay_ms(100_u16);
@@ -464,16 +465,15 @@ fn handle_udp_requests(
                 }
 
                 Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
-                    let min_age = platform
-                        .information
-                        .uptime_us()
-                        .checked_sub(10_000_000)
+                    let time = platform.information.uptime_us();
+                    let min_age = time
+                        .checked_sub(300_000_000) // 5min
                         .unwrap_or(0);
                     let result = match cid {
-                        251 => platform.ltfm1.value(min_age),
-                        252 => platform.ltfm2.value(min_age),
-                        253 => platform.ltfm3.value(min_age),
-                        254 => platform.ltfm4.value(min_age),
+                        251 => platform.ltfm1.value(time, min_age),
+                        252 => platform.ltfm2.value(time, min_age),
+                        253 => platform.ltfm3.value(time, min_age),
+                        254 => platform.ltfm4.value(time, min_age),
                         _ => unreachable!(),
                     }
                     .unwrap_or(0f32);
@@ -886,8 +886,7 @@ impl Default for NetworkConfiguration {
 }
 
 pub struct LongTimeFreqMeasurement {
-    last_value: Option<(u64, f32)>,
-    current_start: Option<u64>,
+    last_value: Option<(u64, u64)>,
     current: FreqState,
 }
 
@@ -895,36 +894,24 @@ impl LongTimeFreqMeasurement {
     pub const fn new() -> Self {
         LongTimeFreqMeasurement {
             last_value: None,
-            current_start: None,
             current: FreqState::new(),
         }
     }
 
-    pub fn update(&mut self, time_us: u64, threshold_us: u64, state: bool) {
-        if let Some(start_time) = self.current_start {
-            if time_us.wrapping_sub(start_time) > threshold_us {
-                self.current_start = Some(time_us);
-                self.current.reset();
-            }
-        }
-        let reset = self
-            .current
-            .update(time_us, state)
-            .map(|result_us| {
-                let freq_time_s = result_us as f32 / 1_000_000.0_f32;
-                let freq = 1.0_f32 / freq_time_s;
-                self.last_value = Some((time_us, freq));
-            })
-            .is_some();
-        if reset {
-            self.current_start = Some(time_us);
+    pub fn update(&mut self, time_us: u64, state: bool) {
+        if let Some(result_us) = self.current.update(time_us, state) {
+            self.last_value = Some((time_us, result_us));
         }
     }
 
-    pub fn value(&self, min_age: u64) -> Option<f32> {
-        if let Some((time, value)) = self.last_value {
+    pub fn value(&self, time: u64, min_age: u64) -> Option<f32> {
+        if let Some((time, period_time_us)) = self.last_value {
+            let period_time_us =
+                period_time_us.max(self.current.time_us_since_freq_start(time).unwrap_or(0));
             if time >= min_age {
-                return Some(value);
+                let freq_time_s = period_time_us as f32 / 1_000_000.0_f32;
+                let freq = 1.0_f32 / freq_time_s;
+                return Some(freq);
             }
         }
         None
@@ -941,6 +928,15 @@ pub enum FreqState {
 impl FreqState {
     pub const fn new() -> Self {
         FreqState::WaitingForFirstHigh
+    }
+
+    pub fn time_us_since_freq_start(&self, time: u64) -> Option<u64> {
+        match self {
+            FreqState::WaitingForFirstHigh | FreqState::WaitingForFirstLow => None,
+            FreqState::WaitingForSecHigh(start) | FreqState::WaitingForSecLow(start) => {
+                time.checked_sub(*start)
+            }
+        }
     }
 
     pub fn reset(&mut self) {
