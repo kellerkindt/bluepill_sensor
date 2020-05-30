@@ -4,8 +4,10 @@ use crate::am2302::Am2302;
 use crate::ds93c46::DS93C46;
 use crate::io_utils::InputPinInfallible;
 use crate::io_utils::OutputPinInfallible;
-use crate::LongTimeFreqMeasurement;
-use crate::NetworkConfiguration;
+use crate::{transmit_requested_on_one_wire, NetworkConfiguration};
+use crate::{HandleError, System};
+use byteorder::ByteOrder;
+use byteorder::NetworkEndian;
 use core::convert::Infallible;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
@@ -17,27 +19,54 @@ use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
 use nb::Error as NbError;
 use onewire;
-use onewire::ds18b20;
 use onewire::OneWire;
 use onewire::Sensor as OneWireSensor;
+use onewire::{ds18b20, DeviceSearch};
+use sensor_common::Bus;
+use sensor_common::Format;
+use sensor_common::Request;
+use sensor_common::Response;
+use sensor_common::Type;
 use stm32f1xx_hal::delay::Delay;
 use stm32f1xx_hal::device::USART1;
+use stm32f1xx_hal::gpio::gpioa::PA0;
+use stm32f1xx_hal::gpio::gpioa::PA1;
 use stm32f1xx_hal::gpio::gpioa::PA10;
 use stm32f1xx_hal::gpio::gpioa::PA12;
 use stm32f1xx_hal::gpio::gpioa::PA15;
+use stm32f1xx_hal::gpio::gpioa::PA2;
+use stm32f1xx_hal::gpio::gpioa::PA3;
+use stm32f1xx_hal::gpio::gpioa::PA4;
+use stm32f1xx_hal::gpio::gpioa::PA5;
+use stm32f1xx_hal::gpio::gpioa::PA6;
+use stm32f1xx_hal::gpio::gpioa::PA7;
 use stm32f1xx_hal::gpio::gpioa::PA9;
+use stm32f1xx_hal::gpio::gpiob::PB0;
+use stm32f1xx_hal::gpio::gpiob::PB1;
+use stm32f1xx_hal::gpio::gpiob::PB10;
+use stm32f1xx_hal::gpio::gpiob::PB11;
 use stm32f1xx_hal::gpio::gpiob::PB3;
 use stm32f1xx_hal::gpio::gpiob::PB4;
-use stm32f1xx_hal::gpio::Alternate;
+use stm32f1xx_hal::gpio::gpiob::PB5;
+use stm32f1xx_hal::gpio::gpiob::PB6;
+use stm32f1xx_hal::gpio::gpiob::PB7;
+use stm32f1xx_hal::gpio::gpioc::PC15;
 use stm32f1xx_hal::gpio::Floating;
 use stm32f1xx_hal::gpio::Input;
+use stm32f1xx_hal::gpio::Output;
 use stm32f1xx_hal::gpio::PushPull;
-use stm32f1xx_hal::i2c::Error as I2cError;
+use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
+use stm32f1xx_hal::i2c::{BlockingI2c, Error as I2cError};
+use stm32f1xx_hal::pac::Peripherals;
+use stm32f1xx_hal::pac::I2C1;
+use stm32f1xx_hal::pac::SPI1;
 use stm32f1xx_hal::pwm_input::PwmInput;
 use stm32f1xx_hal::rcc::Clocks;
 use stm32f1xx_hal::serial::Error as SerialError;
 use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
+use stm32f1xx_hal::spi::Spi;
+use stm32f1xx_hal::spi::Spi1NoRemap;
 use stm32f1xx_hal::time::Hertz;
 use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
@@ -46,15 +75,48 @@ use w5500::*;
 pub const SOCKET_UDP: Socket = Socket::Socket0;
 pub const SOCKET_UDP_PORT: u16 = 51;
 
-pub struct Platform<
-    'a,
-    CS: OutputPin<Error = Infallible>,
-    Spi: FullDuplex<u8, Error = spi::Error>,
-    NetworkReset: OutputPin<Error = Infallible>,
-    ChipSelectEeprom: OutputPin<Error = Infallible>,
-    PlatformReset: OutputPin<Error = Infallible>,
-    OneWireOpenDrain: onewire::OpenDrainOutput<Error = Infallible>,
-> {
+pub type SpiError = spi::Error;
+pub type W5500CsError = Infallible;
+
+/// Everything directly build onto the bluepill sensor board
+pub struct Platform {
+    pub(super) system: System,
+
+    /// UserInput to restart the board
+    pub(super) board_reset: PB11<Output<PushPull>>,
+
+    /// W5500 interrupt pin
+    pub(super) w5500_intr: PB10<Input<Floating>>,
+    pub(super) w5500: W5500<PB1<Output<PushPull>>>,
+
+    /// ChipSelect for the EEPROM
+    pub(super) ds93c46: DS93C46<PB0<Output<PushPull>>>,
+
+    pub(super) spi: Spi<
+        SPI1,
+        Spi1NoRemap,
+        (
+            PA5<Alternate<PushPull>>,
+            PA6<Input<Floating>>,
+            PA7<Alternate<PushPull>>,
+        ),
+    >,
+
+    /// Low-Active pin to restart the W5500
+    pub(super) w5500_reset: PA4<Output<PushPull>>,
+
+    pub(super) led_blue: PA3<Output<PushPull>>,
+    pub(super) led_yellow: PA2<Output<PushPull>>,
+    pub(super) led_red: PA1<Output<PushPull>>,
+
+    /// UserInput to reset the configuration to flash-default
+    pub(super) factory_reset: PA0<Output<OpenDrain>>,
+
+    pub(super) onewire: OneWire<PC15<Output<OpenDrain>>>,
+
+    pub(super) network_udp: Option<UdpSocket>,
+    pub(super) network_config: NetworkConfiguration,
+    /*
     pub(super) information: DeviceInformation,
 
     // periphery
@@ -62,7 +124,6 @@ pub struct Platform<
 
     pub(super) onewire: OneWire<OneWireOpenDrain>,
     pub(super) spi: &'a mut Spi,
-    pub(super) i2c: &'a mut WriteRead<Error = NbError<I2cError>>,
     pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Infallible>,
     pub(super) usart1_rx: &'a mut SerialRead<u8, Error = SerialError>,
 
@@ -78,24 +139,14 @@ pub struct Platform<
     pub(super) ltfm2: LongTimeFreqMeasurement,
     pub(super) ltfm3: LongTimeFreqMeasurement,
     pub(super) ltfm4: LongTimeFreqMeasurement,
-
-    pub(super) reset: PlatformReset,
+    */
 }
 
-impl<
-        'a,
-        CS: OutputPin<Error = Infallible>,
-        Spi: FullDuplex<u8, Error = spi::Error>,
-        NetworkReset: OutputPin<Error = Infallible>,
-        ChipSelectEeprom: OutputPin<Error = Infallible>,
-        PlatformReset: OutputPin<Error = Infallible>,
-        OneWireOpenDrain: onewire::OpenDrainOutput<Error = Infallible>,
-    > Platform<'a, CS, Spi, NetworkReset, ChipSelectEeprom, PlatformReset, OneWireOpenDrain>
-{
+impl Platform {
     pub fn save_network_configuration(&mut self) -> Result<(), ()> {
         match self
             .network_config
-            .write(&mut self.eeprom, self.spi, self.delay)
+            .write(&mut self.ds93c46, &mut self.spi, &mut self.system.delay)
         {
             Err(_) => Err(()),
             Ok(_) => Ok(()),
@@ -103,17 +154,14 @@ impl<
     }
 
     pub fn load_network_configuration(&mut self) -> Result<(), ()> {
-        match self
-            .network_config
-            .load(&mut self.eeprom, self.spi, self.delay)
-        {
-            Err(_) => Err(()),
-            Ok(_) => Ok(()),
-        }
+        self.network_config
+            .load(&mut self.ds93c46, &mut self.spi, &mut self.system.delay)
+            .map(drop)
+            .map_err(drop)
     }
 
-    pub fn init_network(&mut self) -> Result<(), TransferError<Spi::Error, CS::Error>> {
-        let mut active = self.network.activate(self.spi)?;
+    pub fn init_network(&mut self) -> Result<(), TransferError<SpiError, W5500CsError>> {
+        let mut active = self.w5500.activate(&mut self.spi)?;
         let active = &mut active;
 
         active.set_mac(self.network_config.mac)?;
@@ -121,7 +169,7 @@ impl<
         active.set_subnet(self.network_config.subnet)?;
         active.set_gateway(self.network_config.gateway)?;
 
-        self.delay.delay_ms(10_u16);
+        self.system.delay.delay_ms(10_u16);
 
         if self.network_udp.is_none() {
             if let Some(uninitialized) = active.take_socket(SOCKET_UDP) {
@@ -136,14 +184,14 @@ impl<
     }
 
     pub fn init_onewire(&mut self) -> Result<(), onewire::Error<Infallible>> {
-        self.onewire.reset(self.delay).map(drop)
+        self.onewire.reset(&mut self.system.delay).map(drop)
     }
 
     pub fn receive_udp(
         &mut self,
         buffer: &mut [u8],
-    ) -> Result<Option<(IpAddress, u16, usize)>, TransferError<Spi::Error, CS::Error>> {
-        let mut active = self.network.activate(self.spi)?;
+    ) -> Result<Option<(IpAddress, u16, usize)>, TransferError<SpiError, W5500CsError>> {
+        let mut active = self.w5500.activate(&mut self.spi)?;
         let active = &mut active;
         let socket = self
             .network_udp
@@ -158,8 +206,8 @@ impl<
         host: &IpAddress,
         port: u16,
         data: &[u8],
-    ) -> Result<(), TransferError<spi::Error, CS::Error>> {
-        let mut active = self.network.activate(self.spi)?;
+    ) -> Result<(), TransferError<SpiError, W5500CsError>> {
+        let mut active = self.w5500.activate(&mut self.spi)?;
         let socket = self
             .network_udp
             .as_ref()
@@ -168,18 +216,96 @@ impl<
         (&mut active, socket).blocking_send(host, port, data)
     }
 
-    /// Discovers `onewire::Device`s on known `OneWire` bus's. Ignores faulty bus's.
-    pub fn onewire_discover_devices<E, F: FnMut(onewire::Device) -> Result<bool, E>>(
+    pub fn try_handle_request(
         &mut self,
-        mut f: F,
-    ) -> Result<(), E> {
-        let mut search = onewire::DeviceSearch::new();
-        while let Ok(Some(device)) = self.onewire.search_next(&mut search, self.delay) {
-            if !f(device)? {
-                break;
+        request: Request,
+        request_payload: &mut impl sensor_common::Read,
+        response_writer: &mut impl sensor_common::Write,
+    ) -> Result<Action, HandleError> {
+        match request {
+            Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
+                Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(response_writer)?;
+                for device in DeviceSearch::new()
+                    .into_iter(&mut self.onewire, &mut self.system.delay)
+                    .flat_map(Result::ok)
+                {
+                    match response_writer.write_all(&device.address) {
+                        Err(sensor_common::Error::BufferToSmall) => break,
+                        Err(e) => return Err(e)?,
+                        Ok(_) => {}
+                    }
+                }
+                Ok(Action::SendResponse)
             }
+            Request::ReadSpecified(id, Bus::OneWire) => {
+                Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32))
+                    .write(response_writer)?;
+                let ms_till_ready =
+                    crate::prepare_requested_on_one_wire(self, request_payload, response_writer)?;
+                self.system.delay.delay_ms(ms_till_ready);
+                crate::transmit_requested_on_one_wire(self, request_payload, response_writer)?;
+                Ok(Action::SendResponse)
+            }
+            Request::SetNetworkMac(id, mac) => {
+                self.network_config.mac.address.copy_from_slice(&mac);
+                self.network_config.write(
+                    &mut self.ds93c46,
+                    &mut self.spi,
+                    &mut self.system.delay,
+                )?;
+                Response::Ok(id, Format::Empty).write(response_writer)?;
+                Ok(Action::SendResponseAndReset)
+            }
+            Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
+                self.network_config.ip.address.copy_from_slice(&ip);
+                self.network_config.subnet.address.copy_from_slice(&subnet);
+                self.network_config
+                    .gateway
+                    .address
+                    .copy_from_slice(&gateway);
+                self.network_config.write(
+                    &mut self.ds93c46,
+                    &mut self.spi,
+                    &mut self.system.delay,
+                )?;
+                Response::Ok(id, Format::Empty).write(response_writer)?;
+                Ok(Action::SendResponseAndReset)
+            }
+            Request::RetrieveDeviceInformation(id) => {
+                let mut buffer = [0u8; 4 + 8 + 6 + 1];
+                Response::Ok(id, Format::ValueOnly(Type::Bytes(buffer.len() as u8)))
+                    .write(response_writer)?;
+                NetworkEndian::write_u32(&mut buffer[0..], self.system.info.frequency().0);
+                NetworkEndian::write_u64(&mut buffer[4..], self.system.info.uptime());
+
+                buffer[12] = self.system.info.cpu_implementer();
+                buffer[13] = self.system.info.cpu_variant();
+                NetworkEndian::write_u16(&mut buffer[14..], self.system.info.cpu_partnumber());
+                buffer[16] = self.system.info.cpu_revision();
+                buffer[17] = crate::MAGIC_EEPROM_CRC_START;
+                buffer[18] = 0x00;
+
+                response_writer.write_all(&buffer)?;
+                Ok(Action::SendResponse)
+            }
+            Request::RetrieveNetworkConfiguration(id) => {
+                Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3 * 4)))
+                    .write(response_writer)?;
+                response_writer.write_all(&self.network_config.mac.address)?;
+                response_writer.write_all(&self.network_config.ip.address)?;
+                response_writer.write_all(&self.network_config.subnet.address)?;
+                response_writer.write_all(&self.network_config.gateway.address)?;
+                Ok(Action::SendResponse)
+            }
+            Request::RetrieveVersionInformation(id) => {
+                let version: &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
+                let len = version.len() as u8;
+                Response::Ok(id, Format::ValueOnly(Type::String(len))).write(response_writer)?;
+                response_writer.write_all(&version[..len as usize])?;
+                Ok(Action::SendResponse)
+            }
+            _ => Ok(Action::HandleRequest(request)),
         }
-        Ok(())
     }
 
     /// Prepares the given `onewire::Device` to be read. Returns the
@@ -189,7 +315,9 @@ impl<
         match device.family_code() {
             ds18b20::FAMILY_CODE => {
                 if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
-                    if let Ok(time) = dev.start_measurement(&mut self.onewire, self.delay) {
+                    if let Ok(time) =
+                        dev.start_measurement(&mut self.onewire, &mut self.system.delay)
+                    {
                         return Ok(time);
                     }
                 }
@@ -210,7 +338,7 @@ impl<
             ds18b20::FAMILY_CODE => {
                 if let Ok(dev) = ds18b20::DS18B20::new(device.clone()) {
                     for _ in 0..retry_count_on_crc_error {
-                        match dev.read_temperature(&mut self.onewire, self.delay) {
+                        match dev.read_temperature(&mut self.onewire, &mut self.system.delay) {
                             Ok(value) => return Ok(value as f32),
                             Err(onewire::Error::CrcMismatch(_, _)) => continue,
                             _ => break,
@@ -223,16 +351,8 @@ impl<
         Err(())
     }
 
-    pub fn network_configuration(&self) -> &NetworkConfiguration {
-        &self.network_config
-    }
-
-    pub fn network_configuration_mut(&mut self) -> &mut NetworkConfiguration {
-        &mut self.network_config
-    }
-
     pub fn reset(&mut self) {
-        self.reset.set_low_infallible()
+        self.board_reset.set_low_infallible()
     }
 }
 
@@ -306,4 +426,10 @@ impl<T> FullI2C for T where
         + Write<Error = NbError<I2cError>>
         + Read<Error = NbError<I2cError>>
 {
+}
+
+pub enum Action {
+    SendResponse,
+    SendResponseAndReset,
+    HandleRequest(Request),
 }

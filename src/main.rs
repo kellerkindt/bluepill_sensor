@@ -27,10 +27,14 @@ extern crate w5500;
 mod am2302;
 mod ds93c46;
 mod io_utils;
+mod module;
 mod platform;
+mod system;
 // mod sht1x;
 
 use crate::io_utils::*;
+use crate::module::ecm::{ElectricCounterModule, LongTimeFreqMeasurement};
+use crate::system::System;
 use am2302::Am2302;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
@@ -50,14 +54,44 @@ use onewire::{compute_partial_crc8 as crc8, Device};
 use platform::*;
 use sensor_common::*;
 use stm32f1xx_hal::delay::Delay;
+use stm32f1xx_hal::gpio::gpioa::PA0;
+use stm32f1xx_hal::gpio::gpioa::PA1;
+use stm32f1xx_hal::gpio::gpioa::PA10;
+use stm32f1xx_hal::gpio::gpioa::PA12;
+use stm32f1xx_hal::gpio::gpioa::PA15;
+use stm32f1xx_hal::gpio::gpioa::PA2;
+use stm32f1xx_hal::gpio::gpioa::PA3;
+use stm32f1xx_hal::gpio::gpioa::PA4;
+use stm32f1xx_hal::gpio::gpioa::PA5;
+use stm32f1xx_hal::gpio::gpioa::PA6;
+use stm32f1xx_hal::gpio::gpioa::PA7;
+use stm32f1xx_hal::gpio::gpioa::PA9;
+use stm32f1xx_hal::gpio::gpiob::PB0;
+use stm32f1xx_hal::gpio::gpiob::PB1;
+use stm32f1xx_hal::gpio::gpiob::PB10;
+use stm32f1xx_hal::gpio::gpiob::PB11;
+use stm32f1xx_hal::gpio::gpiob::PB3;
+use stm32f1xx_hal::gpio::gpiob::PB4;
+use stm32f1xx_hal::gpio::gpiob::PB5;
+use stm32f1xx_hal::gpio::gpiob::PB6;
+use stm32f1xx_hal::gpio::gpiob::PB7;
+use stm32f1xx_hal::gpio::gpioc::PC15;
+use stm32f1xx_hal::gpio::Floating;
+use stm32f1xx_hal::gpio::Input;
+use stm32f1xx_hal::gpio::Output;
+use stm32f1xx_hal::gpio::PushPull;
+use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
 use stm32f1xx_hal::i2c;
 use stm32f1xx_hal::i2c::BlockingI2c;
 use stm32f1xx_hal::i2c::Error as I2cError;
+use stm32f1xx_hal::pac::I2C1;
+use stm32f1xx_hal::pac::SPI1;
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::serial::Config;
 use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::spi::Spi;
+use stm32f1xx_hal::spi::Spi1NoRemap;
 use w5500::*;
 
 /*
@@ -98,15 +132,7 @@ fn main() -> ! {
     let mut gpiob = peripherals.GPIOB.split(&mut rcc.apb2);
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
-    let mut led_red = gpioa.pa1.into_push_pull_output(&mut gpioa.crl);
-    let mut led_yellow = gpioa.pa2.into_push_pull_output(&mut gpioa.crl);
-    let mut led_blue = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
-
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
-    let one = gpioc
-        .pc15
-        .into_open_drain_output(&mut gpioc.crh)
-        .downgrade(); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
 
     /*
     let mut pcd_gnd = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
@@ -130,70 +156,14 @@ fn main() -> ! {
     let miso = gpioa.pa6.into_floating_input(&mut gpioa.crl);
     let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
 
-    let mut cs_eeprom = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
-    let mut cs_w5500 = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
-    let mut rs = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
-
     let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
-
-    let pb4 = pb4.into_floating_input(&mut gpiob.crl);
-    let pb3 = pb3.into_floating_input(&mut gpiob.crl);
-    let pa15 = pa15.into_floating_input(&mut gpioa.crh);
-    let pa12 = gpioa.pa12.into_floating_input(&mut gpioa.crh);
-
-    let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
-    self_reset.set_high_infallible();
-
-    rs.set_low_infallible();
-    cs_w5500.set_high_infallible(); // low active
-    cs_eeprom.set_low_infallible(); // high active
-    delay.delay_ms(250_u16);
-    rs.set_high_infallible();
-    delay.delay_ms(250_u16);
-
-    let mut spi = Spi::spi1(
-        peripherals.SPI1,
-        (sclk, miso, mosi),
-        &mut afio.mapr,
-        Mode {
-            polarity: Polarity::IdleLow,
-            phase: Phase::CaptureOnFirstTransition,
-        },
-        1.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
-        clocks,
-        &mut rcc.apb2,
-    );
-
-    let mut i2c = BlockingI2c::i2c1(
-        peripherals.I2C1,
-        (
-            gpiob.pb6.into_alternate_open_drain(&mut gpiob.crl),
-            gpiob.pb7.into_alternate_open_drain(&mut gpiob.crl),
-        ),
-        &mut afio.mapr,
-        i2c::Mode::Standard {
-            frequency: 10.khz().into(),
-        },
-        clocks,
-        &mut rcc.apb1,
-        1_000,
-        2,
-        1_000,
-        10_000,
-    );
 
     // DWT does not count without a debugger connected and without
     // this workaround, see https://github.com/japaric/stm32f103xx-hal/issues/76
     // unsafe { *(0xE000EDFC as *mut u32) |= 0x01000000; }
     // unsafe { cp.DCB.demcr.modify(|w| w | (0x01 << 24)); }
-    cp.DCB.enable_trace();
-    let timer = ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, clocks);
 
     // let countdown = ::stm32f1xx_hal::timer::Timer::syst(cp.SYST, 1.hz(), clocks);
-    let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
-
-    let mut config_reset = gpioa.pa0.into_open_drain_output(&mut gpioa.crl);
-    config_reset.set_low_infallible();
 
     // TODO
     // let mut onewire_2 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
@@ -211,6 +181,7 @@ fn main() -> ! {
     let mut am2302_08 = gpiob.pb12.into_open_drain_output(&mut gpiob.crh);
     */
 
+    /*
     let (mut usart_tx, mut usart_rx) = Serial::usart1(
         peripherals.USART1,
         (
@@ -223,28 +194,116 @@ fn main() -> ! {
         &mut rcc.apb2,
     )
     .split();
+    */
 
-    let mut w5500 = W5500::with_initialisation(
-        &mut cs_w5500,
-        &mut spi,
-        OnWakeOnLan::Ignore,
-        OnPingRequest::Respond,
-        ConnectionType::Ethernet,
-        ArpResponses::Cache,
-    )
-    .unwrap();
+    let i2c: BlockingI2c<I2C1, (PB6<Alternate<OpenDrain>>, PB7<Alternate<OpenDrain>>)> =
+        BlockingI2c::i2c1(
+            peripherals.I2C1,
+            (
+                gpiob.pb6.into_alternate_open_drain(&mut gpiob.crl),
+                gpiob.pb7.into_alternate_open_drain(&mut gpiob.crl),
+            ),
+            &mut afio.mapr,
+            i2c::Mode::Standard {
+                frequency: 10.khz().into(),
+            },
+            clocks,
+            &mut rcc.apb1,
+            1_000,
+            2,
+            1_000,
+            10_000,
+        );
 
-    // let mut w5500 = W5500ChipSelect::new(&mut spi, &mut cs_w5500);
-    let ds93c46 = DS93C46::new(cs_eeprom);
-    let wire = OneWire::new(one, false);
+    let mut spi: Spi<
+        SPI1,
+        Spi1NoRemap,
+        (
+            PA5<Alternate<PushPull>>,
+            PA6<Input<Floating>>,
+            PA7<Alternate<PushPull>>,
+        ),
+    > = Spi::spi1(
+        peripherals.SPI1,
+        (sclk, miso, mosi),
+        &mut afio.mapr,
+        Mode {
+            polarity: Polarity::IdleLow,
+            phase: Phase::CaptureOnFirstTransition,
+        },
+        1.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
+        clocks,
+        &mut rcc.apb2,
+    );
+
+    let mut w5500_reset = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
 
     let mut platform = Platform {
+        board_reset: {
+            let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
+            self_reset.set_high_infallible();
+            self_reset
+        },
+
+        w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
+        w5500: {
+            let mut w5500_cs = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
+
+            w5500_cs.set_low_infallible(); // deselect
+
+            w5500_reset.set_high_infallible(); // request reset
+            delay.delay_ms(250_u16);
+            w5500_reset.set_low_infallible(); // allow boot
+
+            W5500::with_initialisation(
+                w5500_cs,
+                &mut spi,
+                OnWakeOnLan::Ignore,
+                OnPingRequest::Respond,
+                ConnectionType::Ethernet,
+                ArpResponses::Cache,
+            )
+            .unwrap()
+        },
+
+        spi,
+
+        ds93c46: {
+            let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+            ds93c46_cs.set_low_infallible(); // deselect
+            DS93C46::new(ds93c46_cs)
+        },
+
+        w5500_reset,
+
+        led_red: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
+        led_yellow: gpioa.pa2.into_push_pull_output(&mut gpioa.crl),
+        led_blue: gpioa.pa3.into_push_pull_output(&mut gpioa.crl),
+
+        factory_reset: gpioa.pa0.into_open_drain_output(&mut gpioa.crl),
+
+        onewire: OneWire::new(gpioc.pc15.into_open_drain_output(&mut gpioc.crh), false),
+
+        network_config: NetworkConfiguration::default(),
+        network_udp: None,
+
+        system: {
+            let timer = {
+                cp.DCB.enable_trace();
+                ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, clocks)
+            };
+
+            System {
+                info: DeviceInformation::new(&timer, cp.CPUID.base.read()),
+                delay,
+                timer,
+            }
+        },
+        /*
         information,
 
         delay: &mut delay,
-        onewire: wire,
         spi: &mut spi,
-        i2c: &mut i2c,
         usart1_tx: &mut usart_tx,
         usart1_rx: &mut usart_rx,
 
@@ -272,14 +331,13 @@ fn main() -> ! {
         ltfm2: LongTimeFreqMeasurement::new(),
         ltfm3: LongTimeFreqMeasurement::new(),
         ltfm4: LongTimeFreqMeasurement::new(),
-
-        reset: self_reset,
+         */
     };
 
     // TODO error handling
     if platform.load_network_configuration().is_err() {
         for _ in 0..4 {
-            platform.delay.delay_ms(1000_u16);
+            platform.system.delay.delay_ms(1000_u16);
             if led.is_set_low().unwrap() {
                 led.set_high_infallible();
             } else {
@@ -287,11 +345,28 @@ fn main() -> ! {
             }
         }
     }
-    platform.delay.delay_ms(25_u16);
+
+    platform.w5500_reset.set_low_infallible();
+    platform.system.delay.delay_ms(250_u16);
+    platform.w5500_reset.set_high_infallible();
+    platform.system.delay.delay_ms(25_u16); // the network chip needs some time to boot!
+
     let _ = platform.init_network();
     let _ = platform.init_onewire();
 
     let mut tick = 0_u64;
+
+    let mut ecc = ElectricCounterModule {
+        pa12: gpioa.pa12.into_floating_input(&mut gpioa.crh),
+        pa15: pa15.into_floating_input(&mut gpioa.crh),
+        pb3: pb3.into_floating_input(&mut gpiob.crl),
+        pb4: pb4.into_floating_input(&mut gpiob.crl),
+
+        ltfm1: LongTimeFreqMeasurement::new(),
+        ltfm2: LongTimeFreqMeasurement::new(),
+        ltfm3: LongTimeFreqMeasurement::new(),
+        ltfm4: LongTimeFreqMeasurement::new(),
+    };
 
     loop {
         if tick % 100 == 0 {
@@ -302,89 +377,52 @@ fn main() -> ! {
             }
         }
 
-        match handle_udp_requests(
-            &mut platform,
-            &mut [0u8; 2048],
-            &mut led_red,
-            &mut led_yellow,
-            &mut led_blue,
-        ) {
+        match handle_udp_requests(&mut platform, &mut [0u8; 2048]) {
             Err(_e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
-                led_yellow.set_high_infallible();
-                platform.delay.delay_ms(2_000_u16);
+                platform.led_yellow.set_high_infallible();
+                platform.system.delay.delay_ms(2_000_u16);
             }
             Ok(address) => {
-                if let Some((_ip, _port)) = address {
-                    // writeln!(display, "Fine:");
-                    // writeln!(display, "{}:{}", ip, port);
-                    led_yellow.set_low_infallible();
-                }
+                platform.led_blue.set_high_infallible();
+                platform.led_yellow.set_low_infallible();
             }
         };
 
         {
-            let probe_start = timer.now();
-            while config_reset.is_high().unwrap_or(false) {
+            let probe_start = platform.system.timer.now();
+            while platform.factory_reset.is_high().unwrap_or(false) {
                 // pressed for longer than 3s?
-                if (probe_start.elapsed() / timer.frequency().0) > 3 {
-                    (*platform.network_configuration_mut()) = NetworkConfiguration::default();
+                if (probe_start.elapsed() / platform.system.timer.frequency().0) > 3 {
+                    platform.network_config = NetworkConfiguration::default();
                     let _ = platform.save_network_configuration();
-                    while config_reset.is_high().unwrap_or(false) {
-                        led_blue.set_high_infallible();
-                        led_yellow.set_high_infallible();
-                        led_red.set_high_infallible();
+                    while platform.factory_reset.is_high().unwrap_or(false) {
+                        platform.led_blue.set_high_infallible();
+                        platform.led_yellow.set_high_infallible();
+                        platform.led_red.set_high_infallible();
                     }
                     platform.reset();
                 }
             }
         }
-        {
-            let time_us = platform.information.uptime_us();
-            platform
-                .ltfm1
-                .update(time_us, pa12.is_high().unwrap_or(false));
-            platform
-                .ltfm2
-                .update(time_us, pa15.is_high().unwrap_or(false));
-            platform
-                .ltfm3
-                .update(time_us, pb3.is_high().unwrap_or(false));
-            platform
-                .ltfm4
-                .update(time_us, pb4.is_high().unwrap_or(false));
-        }
+
+        ecc.update(platform.system.info.uptime_us());
 
         // delay.delay_ms(100_u16);
         tick += 1;
-        platform.information.update_uptime_offset();
+        platform.system.info.update_uptime_offset();
     }
 }
 
-fn handle_udp_requests(
-    platform: &mut Platform<
-        impl OutputPin<Error = Infallible>,
-        impl FullDuplex<u8, Error = spi::Error>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl onewire::OpenDrainOutput<Error = Infallible>,
-    >,
-    buffer: &mut [u8],
-    led_red: &mut impl OutputPin<Error = Infallible>,
-    led_yellow: &mut impl OutputPin<Error = Infallible>,
-    led_blue: &mut impl OutputPin<Error = Infallible>,
-) -> Result<Option<(IpAddress, u16)>, HandleError> {
+fn handle_udp_requests(platform: &mut Platform, buffer: &mut [u8]) -> Result<(), HandleError> {
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
+        platform.led_red.set_high_infallible();
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
+        let writer = &mut &mut *response_buffer;
+        let available = writer.available();
 
-        let reset;
-        let response_size = {
-            let writer = &mut &mut *response_buffer;
-
-            let available = writer.available();
-
+        let (response_size, action, request_id) = {
             let (request, request_length) = {
                 let reader = &mut &*whole_request_buffer;
                 let available = reader.available();
@@ -395,255 +433,74 @@ fn handle_udp_requests(
             let (_request_header_buffer, request_content_buffer) =
                 whole_request_buffer.split_at_mut(request_length);
 
-            led_blue.set_low_infallible();
-            led_yellow.set_low_infallible();
-            reset = match request {
-                Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
-                    Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
-                    platform.onewire_discover_devices::<sensor_common::Error, _>(|device| {
-                        if writer.available() >= device.address.len() {
-                            led_yellow.set_high_infallible();
-                            writer.write_all(&device.address)?;
-                        } else {
-                            led_red.set_high_infallible();
-                        }
-                        led_blue.set_high_infallible();
-                        // does it accept another device?
-                        Ok(writer.available() >= device.address.len())
-                    })?;
-                    false
-                }
+            platform.led_blue.set_low_infallible();
+            platform.led_yellow.set_low_infallible();
 
-                Request::ReadSpecified(id, Bus::OneWire) => {
-                    Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32))
-                        .write(writer)?;
-                    let ms_till_ready = prepare_requested_on_one_wire(
-                        platform,
-                        &mut &*request_content_buffer,
-                        writer,
-                    )?;
-                    platform.delay.delay_ms(ms_till_ready);
-                    transmit_requested_on_one_wire(
-                        platform,
-                        &mut &*request_content_buffer,
-                        writer,
-                    )?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::I2C) if request_content_buffer.len() >= 2 => {
-                    let len_response = request_content_buffer[0];
-                    let address = request_content_buffer[1];
-                    let mut response_buffer = [0u8; 255]; // TODO risky
-
-                    platform.i2c.write_read(
-                        address,
-                        &request_content_buffer[2..],
-                        &mut response_buffer[..len_response as usize],
-                    )?;
-
-                    Response::Ok(id, Format::ValueOnly(Type::Bytes(len_response))).write(writer)?;
-                    writer.write_all(&response_buffer)?;
-                    false
-                }
-
-                Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
-                    let time = platform.information.uptime_us();
-                    let min_age = time
-                        .checked_sub(300_000_000) // 5min
-                        .unwrap_or(0);
-                    let result = match cid {
-                        251 => platform.ltfm1.value(time, min_age),
-                        252 => platform.ltfm2.value(time, min_age),
-                        253 => platform.ltfm3.value(time, min_age),
-                        254 => platform.ltfm4.value(time, min_age),
-                        _ => unreachable!(),
-                    }
-                    .unwrap_or(0f32);
-
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                    let mut buffer = [0u8; 4];
-                    NetworkEndian::write_f32(&mut buffer[..], result);
-                    writer.write_all(&buffer[..])?;
-                    false
-                }
-                Request::ReadSpecified(id, Bus::Custom(255)) => {
-                    block!(platform.usart1_tx.write(0xFF)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x01)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x86)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x00)).unwrap(); // operation cannot fail (void)
-                    block!(platform.usart1_tx.write(0x79)).unwrap(); // operation cannot fail (void)
-                    Response::Ok(id, Format::ValueOnly(Type::Bytes(9))).write(writer)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    writer.write_u8(block!(platform.usart1_rx.read()).unwrap_or_default())?; //.map_err(|e| HandleError::Unknown)?;
-                    false
-                }
-
-                _ => {
-                    led_blue.set_low_infallible();
-                    handle_udp_requests_legacy(
-                        id,
-                        request,
-                        &platform.information,
-                        &mut platform.network_config,
-                        &mut platform.eeprom,
-                        &mut platform.humidity,
-                        platform.delay,
-                        platform.spi,
-                        request_content_buffer,
-                        writer,
-                        led_red,
-                        led_yellow,
-                        led_blue,
-                    )?
-                }
-            };
-
-            available - writer.available()
+            let action =
+                platform.try_handle_request(request, &mut &*request_content_buffer, writer);
+            (available - writer.available(), action, id)
         };
 
-        platform.send_udp(&ip, port, &response_buffer[..response_size])?;
+        let reset = match action {
+            Ok(Action::SendResponse) => {
+                platform.send_udp(&ip, port, &response_buffer[..response_size])?;
+                platform.led_yellow.set_high_infallible();
+                false
+            }
+            Ok(Action::SendResponseAndReset) => {
+                platform.send_udp(&ip, port, &response_buffer[..response_size])?;
+                true
+            }
+            Ok(Action::HandleRequest(request)) => {
+                Response::NotImplemented(request.id()).write(writer)?;
+                let response_size = available - writer.available();
+                platform.send_udp(&ip, port, &response_buffer[..response_size])?;
+                false
+            }
+            Err(e) => {
+                let to_skip = available - writer.available();
+                Response::NotAvailable(request_id).write(writer)?;
+                let response_size = available - writer.available();
+                platform.send_udp(&ip, port, &response_buffer[to_skip..response_size])?;
+                return Err(e)?;
+            }
+        };
+
+        /*
+                        Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
+                            let time = platform.system.info.uptime_us();
+                            let min_age = time
+                                .checked_sub(300_000_000) // 5min
+                                .unwrap_or(0);
+                            let result = match cid {
+                                251 => platform.ltfm1.value(time, min_age),
+                                252 => platform.ltfm2.value(time, min_age),
+                                253 => platform.ltfm3.value(time, min_age),
+                                254 => platform.ltfm4.value(time, min_age),
+                                _ => unreachable!(),
+                            }
+                            .unwrap_or(0f32);
+
+                            Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
+                            let mut buffer = [0u8; 4];
+                            NetworkEndian::write_f32(&mut buffer[..], result);
+                            writer.write_all(&buffer[..])?;
+                            false
+                        }
+        */
 
         if reset {
             // increase possibility that packet is out
-            platform.delay.delay_ms(100_u16);
+            platform.system.delay.delay_ms(100_u16);
             let _ = platform.load_network_configuration();
             platform.reset();
         }
-        Ok(Some((ip, port)))
-    } else {
-        Ok(None)
     }
-}
-
-fn handle_udp_requests_legacy(
-    id: u8,
-    request: Request,
-    info: &DeviceInformation,
-    net_conf: &mut NetworkConfiguration,
-    eeprom: &mut DS93C46<impl OutputPin<Error = Infallible>>,
-    am2302: &mut [Am2302],
-    delay: &mut Delay,
-    spi: &mut impl FullDuplex<u8, Error = spi::Error>,
-    request_content_buffer: &[u8],
-    writer: &mut impl ::sensor_common::Write,
-    led_red: &mut impl OutputPin<Error = Infallible>,
-    led_yellow: &mut impl OutputPin<Error = Infallible>,
-    led_blue: &mut impl OutputPin<Error = Infallible>,
-) -> Result<bool, HandleError> {
-    let mut reset = false;
-
-    match request {
-        Request::ReadSpecified(id, Bus::Custom(bus)) => {
-            // somehow 1, 2, 3 are not working atm
-            if (bus as usize) < am2302.len() {
-                led_red.set_low_infallible();
-                led_yellow.set_low_infallible();
-                led_blue.set_low_infallible();
-                match am2302[bus as usize].read() {
-                    Ok(value) => {
-                        Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                        let mut buffer = [0u8; 4];
-                        NetworkEndian::write_f32(&mut buffer[..], value.humidity);
-                        writer.write_all(&buffer[..])?;
-                        NetworkEndian::write_f32(&mut buffer[..], value.temperature);
-                        writer.write_all(&buffer[..])?;
-                    }
-                    Err(e) => {
-                        Response::NotAvailable(id).write(writer)?;
-                        match e {
-                            am2302::Error::Crc => {
-                                let _ = led_red.set_high();
-                            }
-                            am2302::Error::NotHighWithin(time) => {
-                                let _ = led_yellow.set_high();
-                                writer.write_u8(time as u8)?;
-                            }
-                            am2302::Error::NotLowWithin(time) => {
-                                let _ = led_blue.set_high();
-                                writer.write_u8(time as u8)?;
-                            }
-                        }
-                    }
-                }
-            } else {
-                Response::NotImplemented(id).write(writer)?;
-            }
-        }
-
-        Request::SetNetworkMac(id, mac) => {
-            net_conf.mac.address.copy_from_slice(&mac);
-            net_conf.write(eeprom, spi, delay)?;
-            Response::Ok(id, Format::Empty).write(writer)?;
-            reset = true;
-        }
-        Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
-            net_conf.ip.address.copy_from_slice(&ip);
-            net_conf.subnet.address.copy_from_slice(&subnet);
-            net_conf.gateway.address.copy_from_slice(&gateway);
-            net_conf.write(eeprom, spi, delay)?;
-            Response::Ok(id, Format::Empty).write(writer)?;
-            reset = true;
-        }
-
-        Request::RetrieveDeviceInformation(id) => {
-            let mut buffer = [0u8; 4 + 8 + 6 + 1];
-            Response::Ok(id, Format::ValueOnly(Type::Bytes(buffer.len() as u8))).write(writer)?;
-            NetworkEndian::write_u32(&mut buffer[0..], info.frequency().0);
-            NetworkEndian::write_u64(&mut buffer[4..], info.uptime());
-
-            buffer[12] = info.cpu_implementer();
-            buffer[13] = info.cpu_variant();
-            NetworkEndian::write_u16(&mut buffer[14..], info.cpu_partnumber());
-            buffer[16] = info.cpu_revision();
-            buffer[17] = MAGIC_EEPROM_CRC_START;
-            buffer[18] = 0x00;
-
-            writer.write_all(&buffer)?;
-        }
-
-        Request::RetrieveNetworkConfiguration(id) => {
-            Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3 * 4))).write(writer)?;
-            writer.write_all(&net_conf.mac.address)?;
-            writer.write_all(&net_conf.ip.address)?;
-            writer.write_all(&net_conf.subnet.address)?;
-            writer.write_all(&net_conf.gateway.address)?;
-        }
-
-        Request::RetrieveVersionInformation(id) => {
-            let version: &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
-            let len = version.len() as u8;
-            Response::Ok(id, Format::ValueOnly(Type::String(len))).write(writer)?;
-            writer.write_all(&version[..len as usize])?;
-        }
-
-        _ => {
-            Response::NotImplemented(id).write(writer)?;
-        }
-    };
-    Ok(reset)
+    Ok(())
 }
 
 fn prepare_requested_on_one_wire(
-    platform: &mut Platform<
-        impl OutputPin<Error = Infallible>,
-        impl FullDuplex<u8, Error = spi::Error>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl onewire::OpenDrainOutput<Error = Infallible>,
-    >,
+    platform: &mut Platform,
     reader: &mut impl sensor_common::Read,
     writer: &mut impl sensor_common::Write,
 ) -> Result<u16, HandleError> {
@@ -671,14 +528,7 @@ fn prepare_requested_on_one_wire(
 }
 
 fn transmit_requested_on_one_wire(
-    platform: &mut Platform<
-        impl OutputPin<Error = Infallible>,
-        impl FullDuplex<u8, Error = spi::Error>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl OutputPin<Error = Infallible>,
-        impl onewire::OpenDrainOutput<Error = Infallible>,
-    >,
+    platform: &mut Platform,
     reader: &mut impl sensor_common::Read,
     writer: &mut impl sensor_common::Write,
 ) -> Result<(), HandleError> {
@@ -821,85 +671,5 @@ impl Default for NetworkConfiguration {
             subnet: IpAddress::new(255, 255, 255, 0),
             gateway: IpAddress::new(192, 168, 3, 1),
         }
-    }
-}
-
-pub struct LongTimeFreqMeasurement {
-    last_value: Option<(u64, u64)>,
-    current: FreqState,
-}
-
-impl LongTimeFreqMeasurement {
-    pub const fn new() -> Self {
-        LongTimeFreqMeasurement {
-            last_value: None,
-            current: FreqState::new(),
-        }
-    }
-
-    pub fn update(&mut self, time_us: u64, state: bool) {
-        if let Some(result_us) = self.current.update(time_us, state) {
-            self.last_value = Some((time_us, result_us));
-        }
-    }
-
-    pub fn value(&self, time: u64, min_age: u64) -> Option<f32> {
-        if let Some((time, period_time_us)) = self.last_value {
-            let period_time_us =
-                period_time_us.max(self.current.time_us_since_freq_start(time).unwrap_or(0));
-            if time >= min_age {
-                let freq_time_s = period_time_us as f32 / 1_000_000.0_f32;
-                let freq = 1.0_f32 / freq_time_s;
-                return Some(freq);
-            }
-        }
-        None
-    }
-}
-
-pub enum FreqState {
-    WaitingForFirstHigh,
-    WaitingForFirstLow,
-    WaitingForSecHigh(u64),
-    WaitingForSecLow(u64),
-}
-
-impl FreqState {
-    pub const fn new() -> Self {
-        FreqState::WaitingForFirstHigh
-    }
-
-    pub fn time_us_since_freq_start(&self, time: u64) -> Option<u64> {
-        match self {
-            FreqState::WaitingForFirstHigh | FreqState::WaitingForFirstLow => None,
-            FreqState::WaitingForSecHigh(start) | FreqState::WaitingForSecLow(start) => {
-                time.checked_sub(*start)
-            }
-        }
-    }
-
-    pub fn reset(&mut self) {
-        *self = Self::new()
-    }
-
-    pub fn update(&mut self, time: u64, state: bool) -> Option<u64> {
-        match self {
-            FreqState::WaitingForFirstHigh if state => {
-                *self = FreqState::WaitingForFirstLow;
-            }
-            FreqState::WaitingForFirstLow if !state => {
-                *self = FreqState::WaitingForSecHigh(time);
-            }
-            FreqState::WaitingForSecHigh(start) if state => {
-                *self = FreqState::WaitingForSecLow(*start);
-            }
-            FreqState::WaitingForSecLow(start) if !state => {
-                let diff = time.wrapping_sub(*start);
-                self.reset();
-                return Some(diff);
-            }
-            _ => {}
-        }
-        None
     }
 }
