@@ -1,10 +1,6 @@
-use void::Void;
-
-use crate::am2302::Am2302;
 use crate::ds93c46::DS93C46;
-use crate::io_utils::InputPinInfallible;
 use crate::io_utils::OutputPinInfallible;
-use crate::{transmit_requested_on_one_wire, NetworkConfiguration};
+use crate::NetworkConfiguration;
 use crate::{HandleError, System};
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
@@ -13,10 +9,6 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
-use embedded_hal::digital::v2::{InputPin, OutputPin};
-use embedded_hal::serial::Read as SerialRead;
-use embedded_hal::serial::Write as SerialWrite;
-use embedded_hal::spi::FullDuplex;
 use nb::Error as NbError;
 use onewire;
 use onewire::OneWire;
@@ -27,43 +19,26 @@ use sensor_common::Format;
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
-use stm32f1xx_hal::delay::Delay;
-use stm32f1xx_hal::device::USART1;
 use stm32f1xx_hal::gpio::gpioa::PA0;
 use stm32f1xx_hal::gpio::gpioa::PA1;
-use stm32f1xx_hal::gpio::gpioa::PA10;
-use stm32f1xx_hal::gpio::gpioa::PA12;
-use stm32f1xx_hal::gpio::gpioa::PA15;
 use stm32f1xx_hal::gpio::gpioa::PA2;
 use stm32f1xx_hal::gpio::gpioa::PA3;
 use stm32f1xx_hal::gpio::gpioa::PA4;
 use stm32f1xx_hal::gpio::gpioa::PA5;
 use stm32f1xx_hal::gpio::gpioa::PA6;
 use stm32f1xx_hal::gpio::gpioa::PA7;
-use stm32f1xx_hal::gpio::gpioa::PA9;
 use stm32f1xx_hal::gpio::gpiob::PB0;
 use stm32f1xx_hal::gpio::gpiob::PB1;
 use stm32f1xx_hal::gpio::gpiob::PB10;
 use stm32f1xx_hal::gpio::gpiob::PB11;
-use stm32f1xx_hal::gpio::gpiob::PB3;
-use stm32f1xx_hal::gpio::gpiob::PB4;
-use stm32f1xx_hal::gpio::gpiob::PB5;
-use stm32f1xx_hal::gpio::gpiob::PB6;
-use stm32f1xx_hal::gpio::gpiob::PB7;
 use stm32f1xx_hal::gpio::gpioc::PC15;
 use stm32f1xx_hal::gpio::Floating;
 use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::gpio::Output;
 use stm32f1xx_hal::gpio::PushPull;
 use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
-use stm32f1xx_hal::i2c::{BlockingI2c, Error as I2cError};
-use stm32f1xx_hal::pac::Peripherals;
-use stm32f1xx_hal::pac::I2C1;
+use stm32f1xx_hal::i2c::Error as I2cError;
 use stm32f1xx_hal::pac::SPI1;
-use stm32f1xx_hal::pwm_input::PwmInput;
-use stm32f1xx_hal::rcc::Clocks;
-use stm32f1xx_hal::serial::Error as SerialError;
-use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::spi::Spi;
 use stm32f1xx_hal::spi::Spi1NoRemap;
@@ -86,6 +61,7 @@ pub struct Platform {
     pub(super) board_reset: PB11<Output<PushPull>>,
 
     /// W5500 interrupt pin
+    #[allow(unused)]
     pub(super) w5500_intr: PB10<Input<Floating>>,
     pub(super) w5500: W5500<PB1<Output<PushPull>>>,
 
@@ -390,6 +366,7 @@ impl DeviceInformation {
         self.uptime_offset + self.init.elapsed().wrapping_sub(self.init_last) as u64
     }
 
+    #[allow(unused)]
     pub fn uptime_ms(&self) -> u64 {
         self.uptime() / (self.frequency.0 / 1_000) as u64
     }
@@ -403,19 +380,19 @@ impl DeviceInformation {
     }
 
     pub fn cpu_implementer(&self) -> u8 {
-        (self.cpuid >> 24) as u8
+        (self.cpu_id() >> 24) as u8
     }
 
     pub fn cpu_variant(&self) -> u8 {
-        (self.cpuid >> 20) as u8 & 0x0F
+        (self.cpu_id() >> 20) as u8 & 0x0F
     }
 
     pub fn cpu_partnumber(&self) -> u16 {
-        (self.cpuid >> 4) as u16 & 0x0F_FF
+        (self.cpu_id() >> 4) as u16 & 0x0F_FF
     }
 
     pub fn cpu_revision(&self) -> u8 {
-        self.cpuid as u8 & 0x0F
+        self.cpu_id() as u8 & 0x0F
     }
 }
 

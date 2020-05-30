@@ -1,4 +1,14 @@
 use crate::io_utils::InputPinInfallible;
+use crate::module::RequestHandler;
+use crate::platform::{Action, Platform};
+use crate::HandleError;
+use byteorder::ByteOrder;
+use byteorder::NetworkEndian;
+use sensor_common::Bus;
+use sensor_common::Format;
+use sensor_common::Response;
+use sensor_common::Type;
+use sensor_common::{Read, Request, Write};
 use stm32f1xx_hal::gpio::gpioa::PA12;
 use stm32f1xx_hal::gpio::gpioa::PA15;
 use stm32f1xx_hal::gpio::gpiob::PB3;
@@ -27,6 +37,40 @@ impl ElectricCounterModule {
     }
 }
 
+impl RequestHandler for ElectricCounterModule {
+    fn try_handle_request(
+        &mut self,
+        platform: &mut Platform,
+        request: Request,
+        _request_payload: &mut impl Read,
+        response_writer: &mut impl Write,
+    ) -> Result<Action, HandleError> {
+        match request {
+            Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
+                let time = platform.system.info.uptime_us();
+                let min_age = time
+                    .checked_sub(300_000_000) // 5min
+                    .unwrap_or(0);
+                let result = match cid {
+                    251 => self.ltfm1.value(time, min_age),
+                    252 => self.ltfm2.value(time, min_age),
+                    253 => self.ltfm3.value(time, min_age),
+                    254 => self.ltfm4.value(time, min_age),
+                    _ => unreachable!(),
+                }
+                .unwrap_or(0f32);
+
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(&mut buffer[..], result);
+                response_writer.write_all(&buffer[..])?;
+                Ok(Action::SendResponse)
+            }
+            _ => Ok(Action::HandleRequest(request)),
+        }
+    }
+}
+
 pub struct LongTimeFreqMeasurement {
     last_value: Option<(u64, u64)>,
     current: FreqState,
@@ -46,10 +90,13 @@ impl LongTimeFreqMeasurement {
         }
     }
 
-    pub fn value(&self, time: u64, min_age: u64) -> Option<f32> {
+    pub fn value(&self, system_time: u64, min_age: u64) -> Option<f32> {
         if let Some((time, period_time_us)) = self.last_value {
-            let period_time_us =
-                period_time_us.max(self.current.time_us_since_freq_start(time).unwrap_or(0));
+            let period_time_us = period_time_us.max(
+                self.current
+                    .time_us_since_freq_start(system_time)
+                    .unwrap_or(0),
+            );
             if time >= min_age {
                 let freq_time_s = period_time_us as f32 / 1_000_000.0_f32;
                 let freq = 1.0_f32 / freq_time_s;

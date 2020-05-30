@@ -20,11 +20,11 @@ extern crate nb;
 
 extern crate ads1x1x;
 extern crate onewire;
-extern crate pcd8544;
+// extern crate pcd8544;
 extern crate sensor_common;
 extern crate w5500;
 
-mod am2302;
+// mod am2302;
 mod ds93c46;
 mod io_utils;
 mod module;
@@ -34,8 +34,8 @@ mod system;
 
 use crate::io_utils::*;
 use crate::module::ecm::{ElectricCounterModule, LongTimeFreqMeasurement};
+use crate::module::RequestHandler;
 use crate::system::System;
-use am2302::Am2302;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 use core::convert::Infallible;
@@ -53,42 +53,16 @@ use onewire::OneWire;
 use onewire::{compute_partial_crc8 as crc8, Device};
 use platform::*;
 use sensor_common::*;
-use stm32f1xx_hal::delay::Delay;
-use stm32f1xx_hal::gpio::gpioa::PA0;
-use stm32f1xx_hal::gpio::gpioa::PA1;
-use stm32f1xx_hal::gpio::gpioa::PA10;
-use stm32f1xx_hal::gpio::gpioa::PA12;
-use stm32f1xx_hal::gpio::gpioa::PA15;
-use stm32f1xx_hal::gpio::gpioa::PA2;
-use stm32f1xx_hal::gpio::gpioa::PA3;
-use stm32f1xx_hal::gpio::gpioa::PA4;
 use stm32f1xx_hal::gpio::gpioa::PA5;
 use stm32f1xx_hal::gpio::gpioa::PA6;
 use stm32f1xx_hal::gpio::gpioa::PA7;
-use stm32f1xx_hal::gpio::gpioa::PA9;
-use stm32f1xx_hal::gpio::gpiob::PB0;
-use stm32f1xx_hal::gpio::gpiob::PB1;
-use stm32f1xx_hal::gpio::gpiob::PB10;
-use stm32f1xx_hal::gpio::gpiob::PB11;
-use stm32f1xx_hal::gpio::gpiob::PB3;
-use stm32f1xx_hal::gpio::gpiob::PB4;
-use stm32f1xx_hal::gpio::gpiob::PB5;
-use stm32f1xx_hal::gpio::gpiob::PB6;
-use stm32f1xx_hal::gpio::gpiob::PB7;
-use stm32f1xx_hal::gpio::gpioc::PC15;
+use stm32f1xx_hal::gpio::Alternate;
 use stm32f1xx_hal::gpio::Floating;
 use stm32f1xx_hal::gpio::Input;
-use stm32f1xx_hal::gpio::Output;
 use stm32f1xx_hal::gpio::PushPull;
-use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
-use stm32f1xx_hal::i2c;
-use stm32f1xx_hal::i2c::BlockingI2c;
 use stm32f1xx_hal::i2c::Error as I2cError;
-use stm32f1xx_hal::pac::I2C1;
 use stm32f1xx_hal::pac::SPI1;
 use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::serial::Config;
-use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::spi::Spi;
 use stm32f1xx_hal::spi::Spi1NoRemap;
@@ -196,6 +170,7 @@ fn main() -> ! {
     .split();
     */
 
+    /*
     let i2c: BlockingI2c<I2C1, (PB6<Alternate<OpenDrain>>, PB7<Alternate<OpenDrain>>)> =
         BlockingI2c::i2c1(
             peripherals.I2C1,
@@ -214,6 +189,7 @@ fn main() -> ! {
             1_000,
             10_000,
         );
+    */
 
     let mut spi: Spi<
         SPI1,
@@ -377,17 +353,18 @@ fn main() -> ! {
             }
         }
 
-        match handle_udp_requests(&mut platform, &mut [0u8; 2048]) {
+        match handle_udp_requests(
+            &mut platform,
+            &mut [0u8; 2048],
+            Some(&mut ecc), // Option::<&mut Infallible>::None,
+        ) {
             Err(_e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
                 platform.led_yellow.set_high_infallible();
-                platform.system.delay.delay_ms(2_000_u16);
+                platform.system.delay.delay_ms(1_000_u16);
             }
-            Ok(address) => {
-                platform.led_blue.set_high_infallible();
-                platform.led_yellow.set_low_infallible();
-            }
+            Ok(_address) => {}
         };
 
         {
@@ -415,7 +392,11 @@ fn main() -> ! {
     }
 }
 
-fn handle_udp_requests(platform: &mut Platform, buffer: &mut [u8]) -> Result<(), HandleError> {
+fn handle_udp_requests(
+    platform: &mut Platform,
+    buffer: &mut [u8],
+    module: Option<&mut impl RequestHandler>,
+) -> Result<(), HandleError> {
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         platform.led_red.set_high_infallible();
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
@@ -436,8 +417,20 @@ fn handle_udp_requests(platform: &mut Platform, buffer: &mut [u8]) -> Result<(),
             platform.led_blue.set_low_infallible();
             platform.led_yellow.set_low_infallible();
 
-            let action =
+            let mut action =
                 platform.try_handle_request(request, &mut &*request_content_buffer, writer);
+
+            if let Some(module) = module {
+                if let Ok(Action::HandleRequest(request)) = action {
+                    action = module.try_handle_request(
+                        platform,
+                        request,
+                        &mut &*request_content_buffer,
+                        writer,
+                    );
+                }
+            }
+
             (available - writer.available(), action, id)
         };
 

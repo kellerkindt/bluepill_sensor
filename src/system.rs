@@ -1,4 +1,4 @@
-use crate::platform::{DeviceInformation, Platform};
+use crate::platform::DeviceInformation;
 use stm32f1xx_hal::delay::Delay;
 use stm32f1xx_hal::time::MonoTimer;
 

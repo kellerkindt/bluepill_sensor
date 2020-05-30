@@ -85,7 +85,7 @@ impl<ChipSelect: OutputPin<Error = Infallible>> DS93C46<ChipSelect> {
     fn read_raw<E>(
         &mut self,
         spi: &mut impl FullDuplex<u8, Error = E>,
-        delay: &mut impl DelayMs<u16>,
+        _delay: &mut impl DelayMs<u16>,
         address: u8,
         target: &mut [u8],
     ) -> Result<(), E> {
