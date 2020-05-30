@@ -26,24 +26,20 @@ extern crate w5500;
 
 mod am2302;
 mod ds93c46;
+mod io_utils;
 mod platform;
-mod sht1x;
+// mod sht1x;
 
-use ads1x1x::{Ads1x1x, DataRate16Bit, SlaveAddr};
+use crate::io_utils::*;
 use am2302::Am2302;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 use core::convert::Infallible;
 use core::result::*;
 use ds93c46::*;
-use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::blocking::i2c::WriteRead;
-use embedded_hal::digital::v2;
 use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
-use embedded_hal::serial::Read as EmbeddedSerialRead;
-use embedded_hal::serial::Write as EmbeddedSerialWrite;
 use embedded_hal::spi::FullDuplex;
 use embedded_hal::spi::Mode;
 use embedded_hal::spi::Phase;
@@ -53,27 +49,15 @@ use onewire::OneWire;
 use onewire::{compute_partial_crc8 as crc8, Device};
 use platform::*;
 use sensor_common::*;
-use sht1x::Sht1x;
 use stm32f1xx_hal::delay::Delay;
-use stm32f1xx_hal::gpio::gpiob::PB4;
-use stm32f1xx_hal::gpio::gpiob::PB5;
-use stm32f1xx_hal::gpio::Floating;
-use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::i2c;
 use stm32f1xx_hal::i2c::BlockingI2c;
 use stm32f1xx_hal::i2c::Error as I2cError;
-use stm32f1xx_hal::i2c::I2c;
-use stm32f1xx_hal::pac::TIM3;
 use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::pwm_input::{Configuration, PwmInput, ReadMode};
-use stm32f1xx_hal::rcc::APB1;
 use stm32f1xx_hal::serial::Config;
 use stm32f1xx_hal::serial::Serial;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::spi::Spi;
-use stm32f1xx_hal::timer::Tim3PartialRemap;
-use stm32f1xx_hal::timer::Timer;
-use void::Void;
 use w5500::*;
 
 /*
@@ -119,7 +103,7 @@ fn main() -> ! {
     let mut led_blue = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
 
     let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
-    let mut one = gpioc
+    let one = gpioc
         .pc15
         .into_open_drain_output(&mut gpioc.crh)
         .downgrade(); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
@@ -158,13 +142,13 @@ fn main() -> ! {
     let pa12 = gpioa.pa12.into_floating_input(&mut gpioa.crh);
 
     let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
-    self_reset.set_high();
+    self_reset.set_high_infallible();
 
-    rs.set_low();
-    cs_w5500.set_high(); // low active
-    cs_eeprom.set_low(); // high active
+    rs.set_low_infallible();
+    cs_w5500.set_high_infallible(); // low active
+    cs_eeprom.set_low_infallible(); // high active
     delay.delay_ms(250_u16);
-    rs.set_high();
+    rs.set_high_infallible();
     delay.delay_ms(250_u16);
 
     let mut spi = Spi::spi1(
@@ -209,7 +193,7 @@ fn main() -> ! {
     let information = DeviceInformation::new(&timer, cp.CPUID.base.read());
 
     let mut config_reset = gpioa.pa0.into_open_drain_output(&mut gpioa.crl);
-    config_reset.set_low();
+    config_reset.set_low_infallible();
 
     // TODO
     // let mut onewire_2 = gpiob.pb5.into_open_drain_output(&mut gpiob.crl);
@@ -251,8 +235,8 @@ fn main() -> ! {
     .unwrap();
 
     // let mut w5500 = W5500ChipSelect::new(&mut spi, &mut cs_w5500);
-    let mut ds93c46 = DS93C46::new(cs_eeprom);
-    let mut wire = OneWire::new(one, false);
+    let ds93c46 = DS93C46::new(cs_eeprom);
+    let wire = OneWire::new(one, false);
 
     let mut platform = Platform {
         information,
@@ -297,9 +281,9 @@ fn main() -> ! {
         for _ in 0..4 {
             platform.delay.delay_ms(1000_u16);
             if led.is_set_low().unwrap() {
-                led.set_high();
+                led.set_high_infallible();
             } else {
-                led.set_low();
+                led.set_low_infallible();
             }
         }
     }
@@ -312,9 +296,9 @@ fn main() -> ! {
     loop {
         if tick % 100 == 0 {
             if led.is_set_low().unwrap_or(false) {
-                led.set_high();
+                led.set_high_infallible();
             } else {
-                led.set_low();
+                led.set_low_infallible();
             }
         }
 
@@ -328,14 +312,14 @@ fn main() -> ! {
             Err(_e) => {
                 // writeln!(display, "Error:");
                 // writeln!(display, "{:?}", e);
-                led_yellow.set_high();
+                led_yellow.set_high_infallible();
                 platform.delay.delay_ms(2_000_u16);
             }
             Ok(address) => {
-                if let Some((ip, port)) = address {
+                if let Some((_ip, _port)) = address {
                     // writeln!(display, "Fine:");
                     // writeln!(display, "{}:{}", ip, port);
-                    led_yellow.set_low();
+                    led_yellow.set_low_infallible();
                 }
             }
         };
@@ -348,9 +332,9 @@ fn main() -> ! {
                     (*platform.network_configuration_mut()) = NetworkConfiguration::default();
                     let _ = platform.save_network_configuration();
                     while config_reset.is_high().unwrap_or(false) {
-                        led_blue.set_high();
-                        led_yellow.set_high();
-                        led_red.set_high();
+                        led_blue.set_high_infallible();
+                        led_yellow.set_high_infallible();
+                        led_red.set_high_infallible();
                     }
                     platform.reset();
                 }
@@ -358,7 +342,6 @@ fn main() -> ! {
         }
         {
             let time_us = platform.information.uptime_us();
-            const MAX_UPDATE_THRESHOLD_US: u64 = 300 * /*1s*/ 1_000_000;
             platform
                 .ltfm1
                 .update(time_us, pa12.is_high().unwrap_or(false));
@@ -389,14 +372,14 @@ fn handle_udp_requests(
         impl onewire::OpenDrainOutput<Error = Infallible>,
     >,
     buffer: &mut [u8],
-    led_red: &mut impl OutputPin,
-    led_yellow: &mut impl OutputPin,
-    led_blue: &mut impl OutputPin,
+    led_red: &mut impl OutputPin<Error = Infallible>,
+    led_yellow: &mut impl OutputPin<Error = Infallible>,
+    led_blue: &mut impl OutputPin<Error = Infallible>,
 ) -> Result<Option<(IpAddress, u16)>, HandleError> {
     if let Some((ip, port, size)) = platform.receive_udp(buffer)? {
         let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
 
-        let mut reset;
+        let reset;
         let response_size = {
             let writer = &mut &mut *response_buffer;
 
@@ -412,19 +395,19 @@ fn handle_udp_requests(
             let (_request_header_buffer, request_content_buffer) =
                 whole_request_buffer.split_at_mut(request_length);
 
-            led_blue.set_low();
-            led_yellow.set_low();
+            led_blue.set_low_infallible();
+            led_yellow.set_low_infallible();
             reset = match request {
                 Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
                     Response::Ok(id, Format::AddressOnly(Type::Bytes(8))).write(writer)?;
                     platform.onewire_discover_devices::<sensor_common::Error, _>(|device| {
                         if writer.available() >= device.address.len() {
-                            led_yellow.set_high();
+                            led_yellow.set_high_infallible();
                             writer.write_all(&device.address)?;
                         } else {
-                            led_red.set_high();
+                            led_red.set_high_infallible();
                         }
-                        led_blue.set_high();
+                        led_blue.set_high_infallible();
                         // does it accept another device?
                         Ok(writer.available() >= device.address.len())
                     })?;
@@ -508,7 +491,7 @@ fn handle_udp_requests(
                 }
 
                 _ => {
-                    led_blue.set_low();
+                    led_blue.set_low_infallible();
                     handle_udp_requests_legacy(
                         id,
                         request,
@@ -544,50 +527,6 @@ fn handle_udp_requests(
     }
 }
 
-fn determine_freq(
-    info: &DeviceInformation,
-    pin: &impl InputPin<Error = Infallible>,
-) -> Result<f32, ()> {
-    let start = info.uptime_ms();
-    loop {
-        // wait for high
-        if let Ok(true) = pin.is_high() {
-            break Ok(());
-        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
-            break Err(());
-        }
-    }
-    .and_then(|_| {
-        loop {
-            // wait for low
-            if let Ok(false) = pin.is_high() {
-                break Ok(info.uptime_us());
-            } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
-                break Err(());
-            }
-        }
-    })
-    .and_then(|v| loop {
-        // wait for high
-        if let Ok(true) = pin.is_high() {
-            break Ok(v);
-        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
-            break Err(());
-        }
-    })
-    .and_then(|v| loop {
-        // wait for low
-        if let Ok(false) = pin.is_high() {
-            let freq_time_us = info.uptime_us().wrapping_sub(v);
-            let freq_time_s = freq_time_us as f32 / 1_000_000.0_f32;
-            let freq = 1.0_f32 / freq_time_s;
-            break Ok(freq as f32);
-        } else if info.uptime_ms().wrapping_sub(start) > 10_000 {
-            break Err(());
-        }
-    })
-}
-
 fn handle_udp_requests_legacy(
     id: u8,
     request: Request,
@@ -599,9 +538,9 @@ fn handle_udp_requests_legacy(
     spi: &mut impl FullDuplex<u8, Error = spi::Error>,
     request_content_buffer: &[u8],
     writer: &mut impl ::sensor_common::Write,
-    led_red: &mut impl OutputPin,
-    led_yellow: &mut impl OutputPin,
-    led_blue: &mut impl OutputPin,
+    led_red: &mut impl OutputPin<Error = Infallible>,
+    led_yellow: &mut impl OutputPin<Error = Infallible>,
+    led_blue: &mut impl OutputPin<Error = Infallible>,
 ) -> Result<bool, HandleError> {
     let mut reset = false;
 
@@ -609,9 +548,9 @@ fn handle_udp_requests_legacy(
         Request::ReadSpecified(id, Bus::Custom(bus)) => {
             // somehow 1, 2, 3 are not working atm
             if (bus as usize) < am2302.len() {
-                led_red.set_low();
-                led_yellow.set_low();
-                led_blue.set_low();
+                led_red.set_low_infallible();
+                led_yellow.set_low_infallible();
+                led_blue.set_low_infallible();
                 match am2302[bus as usize].read() {
                     Ok(value) => {
                         Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
@@ -757,7 +696,7 @@ fn transmit_requested_on_one_wire(
             ],
         };
 
-        let mut value = platform
+        let value = platform
             .onewire_read(&device, 1)
             .unwrap_or(::core::f32::NAN);
 

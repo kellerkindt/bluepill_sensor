@@ -1,19 +1,21 @@
+use crate::io_utils::OutputPinInfallible;
+use core::convert::Infallible;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::FullDuplex;
 
-pub struct DS93C46<ChipSelect: OutputPin> {
+pub struct DS93C46<ChipSelect: OutputPin<Error = Infallible>> {
     cs: ChipSelect,
 }
 
-impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
+impl<ChipSelect: OutputPin<Error = Infallible>> DS93C46<ChipSelect> {
     pub fn new(cs: ChipSelect) -> Self {
         DS93C46 { cs }
     }
     pub fn enable_write<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
     ) -> Result<(), E> {
         self.select_chip();
         let result_1 = Self::write_byte(spi, 0x02);
@@ -26,8 +28,8 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
 
     pub fn disable_write<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
     ) -> Result<(), E> {
         self.select_chip();
         let result_1 = Self::write_byte(spi, 0x02);
@@ -40,8 +42,8 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
 
     pub fn write<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
         address: u8,
         content: &[u8],
     ) -> Result<(), E> {
@@ -52,8 +54,8 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
 
     fn write_raw<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
         address: u8,
         content: &[u8],
     ) -> Result<(), E> {
@@ -70,8 +72,8 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
 
     pub fn read<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
         address: u8,
         target: &mut [u8],
     ) -> Result<(), E> {
@@ -82,8 +84,8 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
 
     fn read_raw<E>(
         &mut self,
-        spi: &mut FullDuplex<u8, Error = E>,
-        delay: &mut DelayMs<u16>,
+        spi: &mut impl FullDuplex<u8, Error = E>,
+        delay: &mut impl DelayMs<u16>,
         address: u8,
         target: &mut [u8],
     ) -> Result<(), E> {
@@ -101,22 +103,22 @@ impl<ChipSelect: OutputPin> DS93C46<ChipSelect> {
         Ok(())
     }
 
-    fn read_byte<E>(spi: &mut FullDuplex<u8, Error = E>) -> Result<u8, E> {
+    fn read_byte<E>(spi: &mut impl FullDuplex<u8, Error = E>) -> Result<u8, E> {
         block!(spi.send(0x00))?;
         block!(spi.read())
     }
 
-    fn write_byte<E>(spi: &mut FullDuplex<u8, Error = E>, byte: u8) -> Result<(), E> {
+    fn write_byte<E>(spi: &mut impl FullDuplex<u8, Error = E>, byte: u8) -> Result<(), E> {
         block!(spi.send(byte))?;
         block!(spi.read())?;
         Ok(())
     }
 
     fn select_chip(&mut self) {
-        self.cs.set_high();
+        self.cs.set_high_infallible();
     }
 
     fn deselect_chip(&mut self) {
-        self.cs.set_low();
+        self.cs.set_low_infallible();
     }
 }

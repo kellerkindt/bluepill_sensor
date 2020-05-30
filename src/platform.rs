@@ -2,6 +2,8 @@ use void::Void;
 
 use crate::am2302::Am2302;
 use crate::ds93c46::DS93C46;
+use crate::io_utils::InputPinInfallible;
+use crate::io_utils::OutputPinInfallible;
 use crate::LongTimeFreqMeasurement;
 use crate::NetworkConfiguration;
 use core::convert::Infallible;
@@ -9,7 +11,7 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_hal::serial::Read as SerialRead;
 use embedded_hal::serial::Write as SerialWrite;
 use embedded_hal::spi::FullDuplex;
@@ -230,7 +232,7 @@ impl<
     }
 
     pub fn reset(&mut self) {
-        self.reset.set_low();
+        self.reset.set_low_infallible()
     }
 }
 
