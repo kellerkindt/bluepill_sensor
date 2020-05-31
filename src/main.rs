@@ -106,8 +106,6 @@ fn main() -> ! {
     let mut gpiob = peripherals.GPIOB.split(&mut rcc.apb2);
     let mut gpioc = peripherals.GPIOC.split(&mut rcc.apb2);
 
-    let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh); //.into_push_pull_output(&mut gpioc.crh);//.into_floating_input().is_high();
-
     /*
     let mut pcd_gnd = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
     let mut pcd_light = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
@@ -273,6 +271,7 @@ fn main() -> ! {
                 info: DeviceInformation::new(&timer, cp.CPUID.base.read()),
                 delay,
                 timer,
+                led_status: gpioc.pc13.into_push_pull_output(&mut gpioc.crh),
             }
         },
     };
@@ -281,10 +280,10 @@ fn main() -> ! {
     if platform.load_network_configuration().is_err() {
         for _ in 0..4 {
             platform.system.delay.delay_ms(1000_u16);
-            if led.is_set_low().unwrap() {
-                led.set_high_infallible();
+            if platform.system.led_status.is_set_low().unwrap() {
+                platform.system.led_status.set_high_infallible();
             } else {
-                led.set_low_infallible();
+                platform.system.led_status.set_low_infallible();
             }
         }
     }
@@ -313,10 +312,10 @@ fn main() -> ! {
 
     loop {
         if tick % 100 == 0 {
-            if led.is_set_low().unwrap_or(false) {
-                led.set_high_infallible();
+            if platform.system.led_status.is_set_low().unwrap_or(false) {
+                platform.system.led_status.set_high_infallible();
             } else {
-                led.set_low_infallible();
+                platform.system.led_status.set_low_infallible();
             }
         }
 
