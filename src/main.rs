@@ -14,8 +14,8 @@ extern crate stm32f1xx_hal;
 extern crate byteorder;
 extern crate void;
 
-#[macro_use(block)]
 //#[macro_use(block_while)]
+#[macro_use(block)]
 extern crate nb;
 
 extern crate ads1x1x;
@@ -275,39 +275,6 @@ fn main() -> ! {
                 timer,
             }
         },
-        /*
-        information,
-
-        delay: &mut delay,
-        spi: &mut spi,
-        usart1_tx: &mut usart_tx,
-        usart1_rx: &mut usart_rx,
-
-        network: &mut w5500,
-        network_reset: rs,
-        network_config: NetworkConfiguration::default(),
-        network_udp: None,
-
-        humidity: [
-            // Am2302::new(&mut am2302_00, &timer),
-            // Am2302::new(&mut am2302_01, &timer),
-            // Am2302::new(&mut am2302_02, &timer),
-            // Am2302::new(&mut am2302_03, &timer),
-            /*
-            Am2302::new(&mut am2302_04, &timer),
-            Am2302::new(&mut am2302_05, &timer),
-            Am2302::new(&mut am2302_06, &timer),
-            Am2302::new(&mut am2302_07, &timer),
-            Am2302::new(&mut am2302_08, &timer),
-            */
-        ],
-        eeprom: ds93c46,
-
-        ltfm1: LongTimeFreqMeasurement::new(),
-        ltfm2: LongTimeFreqMeasurement::new(),
-        ltfm3: LongTimeFreqMeasurement::new(),
-        ltfm4: LongTimeFreqMeasurement::new(),
-         */
     };
 
     // TODO error handling
@@ -458,29 +425,6 @@ fn handle_udp_requests(
                 return Err(e)?;
             }
         };
-
-        /*
-                        Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
-                            let time = platform.system.info.uptime_us();
-                            let min_age = time
-                                .checked_sub(300_000_000) // 5min
-                                .unwrap_or(0);
-                            let result = match cid {
-                                251 => platform.ltfm1.value(time, min_age),
-                                252 => platform.ltfm2.value(time, min_age),
-                                253 => platform.ltfm3.value(time, min_age),
-                                254 => platform.ltfm4.value(time, min_age),
-                                _ => unreachable!(),
-                            }
-                            .unwrap_or(0f32);
-
-                            Response::Ok(id, Format::ValueOnly(Type::F32)).write(writer)?;
-                            let mut buffer = [0u8; 4];
-                            NetworkEndian::write_f32(&mut buffer[..], result);
-                            writer.write_all(&buffer[..])?;
-                            false
-                        }
-        */
 
         if reset {
             // increase possibility that packet is out
