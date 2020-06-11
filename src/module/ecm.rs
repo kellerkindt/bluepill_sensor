@@ -11,17 +11,20 @@ use sensor_common::Type;
 use sensor_common::{Read, Request, Write};
 use stm32f1xx_hal::gpio::gpioa::PA12;
 use stm32f1xx_hal::gpio::gpioa::PA15;
+use stm32f1xx_hal::gpio::gpioa::PA8;
 use stm32f1xx_hal::gpio::gpiob::PB3;
 use stm32f1xx_hal::gpio::gpiob::PB4;
-use stm32f1xx_hal::gpio::Floating;
 use stm32f1xx_hal::gpio::Input;
+use stm32f1xx_hal::gpio::{Floating, PullUp};
 
 pub struct ElectricCounterModule {
+    pub pa8: PA8<Input<PullUp>>,
     pub pa12: PA12<Input<Floating>>,
     pub pa15: PA15<Input<Floating>>,
     pub pb3: PB3<Input<Floating>>,
     pub pb4: PB4<Input<Floating>>,
 
+    pub garage_open_since: Option<u64>,
     pub ltfm1: LongTimeFreqMeasurement,
     pub ltfm2: LongTimeFreqMeasurement,
     pub ltfm3: LongTimeFreqMeasurement,
@@ -34,6 +37,14 @@ impl ElectricCounterModule {
         self.ltfm2.update(time_us, self.pa15.is_high_infallible());
         self.ltfm3.update(time_us, self.pb3.is_high_infallible());
         self.ltfm4.update(time_us, self.pb4.is_high_infallible());
+
+        if self.pa8.is_high_infallible() {
+            if self.garage_open_since.is_none() {
+                self.garage_open_since = Some(time_us);
+            }
+        } else {
+            self.garage_open_since = None;
+        }
     }
 }
 
@@ -46,12 +57,14 @@ impl RequestHandler for ElectricCounterModule {
         response_writer: &mut impl Write,
     ) -> Result<Action, HandleError> {
         match request {
-            Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 251 && cid <= 254 => {
+            Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 250 && cid <= 254 => {
                 let time = platform.system.info.uptime_us();
-                let min_age = time
-                    .checked_sub(300_000_000) // 5min
-                    .unwrap_or(0);
+                let min_age = time.saturating_sub(300_000_000); // 5min;
                 let result = match cid {
+                    250 => self.garage_open_since.map(|open_since| {
+                        let time_us_diff = time.saturating_sub(open_since);
+                        time_us_diff as f32 / 1_000_000_f32
+                    }),
                     251 => self.ltfm1.value(time, min_age),
                     252 => self.ltfm2.value(time, min_age),
                     253 => self.ltfm3.value(time, min_age),

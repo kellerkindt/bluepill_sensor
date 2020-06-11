@@ -299,11 +299,13 @@ fn main() -> ! {
     let mut tick = 0_u64;
 
     let mut ecc = ElectricCounterModule {
+        pa8: gpioa.pa8.into_pull_up_input(&mut gpioa.crh),
         pa12: gpioa.pa12.into_floating_input(&mut gpioa.crh),
         pa15: pa15.into_floating_input(&mut gpioa.crh),
         pb3: pb3.into_floating_input(&mut gpiob.crl),
         pb4: pb4.into_floating_input(&mut gpiob.crl),
 
+        garage_open_since: None,
         ltfm1: LongTimeFreqMeasurement::new(),
         ltfm2: LongTimeFreqMeasurement::new(),
         ltfm3: LongTimeFreqMeasurement::new(),
