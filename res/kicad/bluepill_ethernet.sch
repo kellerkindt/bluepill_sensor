@@ -1,6 +1,5 @@
 EESchema Schematic File Version 4
-LIBS:bluepill_ethernet-cache
-EELAYER 26 0
+EELAYER 30 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
@@ -15,627 +14,666 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L bluepill_breakouts:BluePill_STM32F103C U1
-U 1 1 5ABD20EB
-P 5550 3300
-F 0 "U1" H 5100 1950 50  0000 C CNN
-F 1 "BluePill_STM32F103C" H 5600 4150 50  0000 C CNN
-F 2 "BluePill_breakouts:BluePill_STM32F103C" H 5600 1700 50  0001 C CNN
-F 3 "www.rogerclark.net" H 5550 1800 50  0001 C CNN
-	1    5550 3300
+L power:GND #PWR02
+U 1 1 5ABD2774
+P 6750 7550
+F 0 "#PWR02" H 6750 7300 50  0001 C CNN
+F 1 "GND" H 6750 7400 50  0000 C CNN
+F 2 "" H 6750 7550 50  0001 C CNN
+F 3 "" H 6750 7550 50  0001 C CNN
+	1    6750 7550
+	1    0    0    -1  
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:Conn_01x03-conn J2
+U 1 1 5ABD688D
+P 9600 6200
+F 0 "J2" H 9600 6400 50  0000 C CNN
+F 1 "Conn_01x03" H 9600 6000 50  0000 C CNN
+F 2 "Connectors_Molex:Molex_KK-6410-03_03x2.54mm_Straight" H 9600 6200 50  0001 C CNN
+F 3 "" H 9600 6200 50  0001 C CNN
+	1    9600 6200
+	0    1    1    0   
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:CP-device C4
+U 1 1 5ABDC0B1
+P 10150 5600
+F 0 "C4" H 10175 5700 50  0000 L CNN
+F 1 "CP" H 10175 5500 50  0000 L CNN
+F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 10188 5450 50  0001 C CNN
+F 3 "" H 10150 5600 50  0001 C CNN
+	1    10150 5600
+	1    0    0    -1  
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:CP-device C6
+U 1 1 5ABEBD7D
+P 9900 2750
+F 0 "C6" H 9782 2704 50  0000 R CNN
+F 1 "CP" H 9782 2795 50  0000 R CNN
+F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 9938 2600 50  0001 C CNN
+F 3 "" H 9900 2750 50  0001 C CNN
+	1    9900 2750
+	-1   0    0    1   
+$EndComp
+$Comp
+L connectors:HEADER-1x20 J1
+U 1 1 5B103221
+P 9500 3450
+F 0 "J1" H 9628 3486 60  0000 L CNB
+F 1 "HEADER-1x20" H 9628 3395 40  0000 L CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 9500 3450 60  0001 C CNN
+F 3 "" H 9500 3450 60  0001 C CNN
+F 4 "-" H 9450 4600 40  0001 L BNN "Part"
+F 5 "Connector" H 9450 4700 40  0001 L BNN "Family"
+	1    9500 3450
 	1    0    0    -1  
 $EndComp
 $Comp
 L power:VCC #PWR01
 U 1 1 5ABD2688
-P 7050 950
-F 0 "#PWR01" H 7050 800 50  0001 C CNN
-F 1 "VCC" H 7050 1100 50  0000 C CNN
-F 2 "" H 7050 950 50  0001 C CNN
-F 3 "" H 7050 950 50  0001 C CNN
-	1    7050 950 
-	1    0    0    -1  
-$EndComp
-$Comp
-L power:GND #PWR02
-U 1 1 5ABD2774
-P 7750 1550
-F 0 "#PWR02" H 7750 1300 50  0001 C CNN
-F 1 "GND" H 7750 1400 50  0000 C CNN
-F 2 "" H 7750 1550 50  0001 C CNN
-F 3 "" H 7750 1550 50  0001 C CNN
-	1    7750 1550
-	1    0    0    -1  
-$EndComp
-$Comp
-L 93c46:93C46 U2
-U 1 1 5ABD4EFE
-P 8500 3750
-F 0 "U2" H 8500 4000 60  0000 C CNN
-F 1 "93C46" H 8500 3475 60  0000 C CNN
-F 2 "Housings_DIP:DIP-8_W7.62mm" H 8500 3750 60  0001 C CNN
-F 3 "" H 8500 3750 60  0001 C CNN
-	1    8500 3750
-	1    0    0    -1  
-$EndComp
-$Comp
-L conn:Conn_01x03 J2
-U 1 1 5ABD688D
-P 6700 6300
-F 0 "J2" H 6700 6500 50  0000 C CNN
-F 1 "Conn_01x03" H 6700 6100 50  0000 C CNN
-F 2 "Connectors_Molex:Molex_KK-6410-03_03x2.54mm_Straight" H 6700 6300 50  0001 C CNN
-F 3 "" H 6700 6300 50  0001 C CNN
-	1    6700 6300
-	0    1    1    0   
-$EndComp
-$Comp
-L device:R R1
-U 1 1 5ABD825B
-P 6400 5700
-F 0 "R1" V 6480 5700 50  0000 C CNN
-F 1 "R" V 6400 5700 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 6330 5700 50  0001 C CNN
-F 3 "" H 6400 5700 50  0001 C CNN
-	1    6400 5700
+P 11050 650
+F 0 "#PWR01" H 11050 500 50  0001 C CNN
+F 1 "VCC" H 11050 800 50  0000 C CNN
+F 2 "" H 11050 650 50  0001 C CNN
+F 3 "" H 11050 650 50  0001 C CNN
+	1    11050 650 
 	1    0    0    -1  
 $EndComp
 $Comp
 L WIZ850io:WIZ850io U3
 U 1 1 5ABD9273
-P 3700 2750
-F 0 "U3" H 3700 2350 60  0000 C CNN
-F 1 "WIZ850io" H 3700 3150 60  0000 C CNN
-F 2 "kicad:WIZ850io" H 3600 2650 60  0001 C CNN
-F 3 "" H 3600 2650 60  0001 C CNN
-	1    3700 2750
+P 2100 2200
+F 0 "U3" H 2100 1800 60  0000 C CNN
+F 1 "WIZ850io" H 2100 2600 60  0000 C CNN
+F 2 "kicad:WIZ850io" H 2000 2100 60  0001 C CNN
+F 3 "" H 2000 2100 60  0001 C CNN
+	1    2100 2200
 	1    0    0    -1  
 $EndComp
+NoConn ~ 2600 2250
+NoConn ~ 2250 1450
+NoConn ~ 2250 1050
+Connection ~ 1600 1950
+Wire Wire Line
+	1600 1950 1600 2050
+Wire Wire Line
+	9350 650  9350 2300
+Connection ~ 9350 650 
+Wire Wire Line
+	9700 650  9700 5450
+Connection ~ 9700 650 
+Connection ~ 2600 3500
+Connection ~ 9700 5450
+Wire Wire Line
+	10150 5800 10150 5750
+Wire Wire Line
+	9600 5800 9600 6000
+Wire Wire Line
+	9350 650  9700 650 
+Connection ~ 9900 2600
+Wire Wire Line
+	9900 2300 9350 2300
+Connection ~ 9350 2300
+Wire Wire Line
+	9350 2300 9350 2500
+Connection ~ 9350 2500
+Wire Wire Line
+	1750 1150 700  1150
+Wire Wire Line
+	700  1150 700  3500
+Wire Wire Line
+	700  3500 2600 3500
+Wire Wire Line
+	1750 1250 800  1250
+Wire Wire Line
+	800  1250 800  3600
+Wire Wire Line
+	1750 1350 900  1350
+Wire Wire Line
+	1750 1450 1000 1450
+Wire Wire Line
+	1000 1450 1000 3400
+Wire Wire Line
+	2250 1250 3400 1250
+Wire Wire Line
+	3400 1250 3400 2350
+Wire Wire Line
+	2250 1350 3300 1350
+Wire Wire Line
+	900  1350 900  3800
+Wire Wire Line
+	5200 6650 5200 6750
+Wire Wire Line
+	4100 6750 3950 6750
+Wire Wire Line
+	5200 6750 5450 6750
+Connection ~ 5450 6750
+Wire Wire Line
+	1750 1050 700  1050
+Wire Wire Line
+	700  1050 700  650 
+Wire Wire Line
+	6750 7000 6750 7550
+Wire Wire Line
+	2600 2350 3400 2350
+Wire Wire Line
+	2600 2450 2600 3500
+Wire Wire Line
+	1600 1600 1600 1950
+Wire Wire Line
+	3500 1150 3500 1600
+Connection ~ 3500 1150
+Wire Wire Line
+	2250 1150 3500 1150
+Connection ~ 3500 1600
+Wire Wire Line
+	3500 1600 1600 1600
 $Comp
-L device:C C1
+L bluepill_ethernet-rescue:C-device C1
 U 1 1 5ABDB1C7
-P 3700 2150
-F 0 "C1" H 3725 2250 50  0000 L CNN
-F 1 "C" H 3725 2050 50  0000 L CNN
-F 2 "Capacitors_THT:C_Disc_D3.0mm_W2.0mm_P2.50mm" H 3738 2000 50  0001 C CNN
-F 3 "" H 3700 2150 50  0001 C CNN
-	1    3700 2150
-	0    1    1    0   
+P 3650 900
+F 0 "C1" H 3675 1000 50  0000 L CNN
+F 1 "C" H 3675 800 50  0000 L CNN
+F 2 "Capacitors_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 3688 750 50  0001 C CNN
+F 3 "" H 3650 900 50  0001 C CNN
+	1    3650 900 
+	0    -1   -1   0   
 $EndComp
+Wire Wire Line
+	3500 900  3500 1150
+Wire Wire Line
+	4000 650  4000 900 
+Connection ~ 4000 650 
+Connection ~ 4000 900 
+Wire Wire Line
+	700  650  4000 650 
+Wire Wire Line
+	3800 900  4000 900 
+Wire Wire Line
+	4000 2050 4000 2150
+Connection ~ 4000 2050
+Wire Wire Line
+	2600 2050 4000 2050
+Wire Wire Line
+	4000 900  4000 2050
+Wire Wire Line
+	4000 2150 2600 2150
+Connection ~ 3500 1950
+Wire Wire Line
+	2600 1950 3500 1950
+Wire Wire Line
+	3500 1950 3500 1600
+Wire Wire Line
+	1500 3800 1500 2350
+Connection ~ 1500 3800
+Wire Wire Line
+	900  3800 1500 3800
+Wire Wire Line
+	1500 2350 1600 2350
+Wire Wire Line
+	1400 3400 1400 2250
+Wire Wire Line
+	1000 3400 1400 3400
+Connection ~ 1400 3400
+Wire Wire Line
+	1400 2250 1600 2250
+Wire Wire Line
+	800  3600 1300 3600
+Connection ~ 3400 2350
+Wire Wire Line
+	1600 2150 1300 2150
+Wire Wire Line
+	1300 2150 1300 3600
+Wire Wire Line
+	3400 2350 3400 3300
+Connection ~ 1300 3600
+Wire Wire Line
+	4100 6650 3850 6650
+Wire Wire Line
+	4100 6550 3750 6550
 $Comp
-L device:C C5
+L bluepill_ethernet-rescue:C-device C5
 U 1 1 5ABDB608
-P 9450 3750
-F 0 "C5" H 9475 3850 50  0000 L CNN
-F 1 "C" H 9475 3650 50  0000 L CNN
-F 2 "Capacitors_THT:C_Disc_D3.0mm_W2.0mm_P2.50mm" H 9488 3600 50  0001 C CNN
-F 3 "" H 9450 3750 50  0001 C CNN
-	1    9450 3750
+P 5450 6600
+F 0 "C5" H 5475 6700 50  0000 L CNN
+F 1 "C" H 5475 6500 50  0000 L CNN
+F 2 "Capacitors_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 5488 6450 50  0001 C CNN
+F 3 "" H 5450 6600 50  0001 C CNN
+	1    5450 6600
 	-1   0    0    1   
 $EndComp
+Wire Wire Line
+	5200 6450 5450 6450
+Wire Wire Line
+	5450 6750 5450 7000
+Wire Wire Line
+	3500 7000 5450 7000
+Wire Wire Line
+	5450 7000 5700 7000
+Connection ~ 5450 7000
+Wire Wire Line
+	6750 7000 6750 6450
+Wire Wire Line
+	6750 6450 7600 6450
+Wire Wire Line
+	11050 6450 11050 5800
+Connection ~ 6750 7000
+Wire Wire Line
+	5450 650  5450 5800
+Connection ~ 5450 650 
+Connection ~ 7600 6450
+Wire Wire Line
+	7600 6450 11050 6450
+Wire Wire Line
+	11050 5800 11050 2600
 $Comp
-L device:C C3
-U 1 1 5ABDBC12
-P 7000 5700
-F 0 "C3" H 7025 5800 50  0000 L CNN
-F 1 "C" H 7025 5600 50  0000 L CNN
-F 2 "Capacitors_THT:C_Disc_D3.0mm_W2.0mm_P2.50mm" H 7038 5550 50  0001 C CNN
-F 3 "" H 7000 5700 50  0001 C CNN
-	1    7000 5700
-	1    0    0    -1  
-$EndComp
-$Comp
-L device:CP C4
-U 1 1 5ABDC0B1
-P 7250 5700
-F 0 "C4" H 7275 5800 50  0000 L CNN
-F 1 "CP" H 7275 5600 50  0000 L CNN
-F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 7288 5550 50  0001 C CNN
-F 3 "" H 7250 5700 50  0001 C CNN
-	1    7250 5700
-	1    0    0    -1  
-$EndComp
-$Comp
-L device:CP C2
+L bluepill_ethernet-rescue:CP-device C2
 U 1 1 5ABDC134
-P 5900 1100
-F 0 "C2" H 5925 1200 50  0000 L CNN
-F 1 "CP" H 5925 1000 50  0000 L CNN
-F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 5938 950 50  0001 C CNN
-F 3 "" H 5900 1100 50  0001 C CNN
-	1    5900 1100
+P 11050 900
+F 0 "C2" H 11075 1000 50  0000 L CNN
+F 1 "CP" H 11075 800 50  0000 L CNN
+F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 11088 750 50  0001 C CNN
+F 3 "" H 11050 900 50  0001 C CNN
+	1    11050 900 
+	1    0    0    -1  
+$EndComp
+Connection ~ 11050 5800
+Wire Wire Line
+	11050 750  11050 650 
+Connection ~ 11050 650 
+Connection ~ 10150 5800
+Wire Wire Line
+	10150 5800 11050 5800
+Wire Wire Line
+	9900 2600 11050 2600
+Connection ~ 11050 2600
+Wire Wire Line
+	11050 2600 11050 1050
+Wire Wire Line
+	9350 2600 9900 2600
+Wire Wire Line
+	7600 4300 7600 4400
+Connection ~ 7600 4400
+Wire Wire Line
+	3650 6450 4100 6450
+Wire Wire Line
+	3650 3700 3650 5800
+Connection ~ 5450 5800
+Wire Wire Line
+	5450 5800 5450 6450
+Wire Wire Line
+	5700 6100 5700 7000
+Connection ~ 5700 7000
+Wire Wire Line
+	3950 6100 3950 6750
+Wire Wire Line
+	3750 5900 3750 6550
+Connection ~ 3650 5800
+Wire Wire Line
+	3650 5800 3650 6450
+Connection ~ 5450 6450
+Connection ~ 5200 6750
+$Comp
+L 93c46:93C46 U2
+U 1 1 5ABD4EFE
+P 4650 6600
+F 0 "U2" H 4650 6850 60  0000 C CNN
+F 1 "93C46" H 4650 6325 60  0000 C CNN
+F 2 "Housings_DIP:DIP-8_W7.62mm" H 4650 6600 60  0001 C CNN
+F 3 "" H 4650 6600 60  0001 C CNN
+	1    4650 6600
+	1    0    0    -1  
+$EndComp
+NoConn ~ 5200 6550
+Wire Wire Line
+	9700 5450 10150 5450
+Wire Wire Line
+	9600 5800 10150 5800
+Wire Wire Line
+	3850 6000 3850 6650
+Wire Wire Line
+	5200 5800 5450 5800
+NoConn ~ 5200 5900
+Connection ~ 5200 6100
+Wire Wire Line
+	5200 6100 5700 6100
+Wire Wire Line
+	5200 6000 5200 6100
+Wire Wire Line
+	4100 6100 3950 6100
+Wire Wire Line
+	4100 6000 3850 6000
+Wire Wire Line
+	4100 5900 3750 5900
+Wire Wire Line
+	4100 5800 3650 5800
+$Comp
+L 93c46:93C46 U4
+U 1 1 5F427178
+P 4650 5950
+F 0 "U4" H 4650 6200 60  0000 C CNN
+F 1 "93C46" H 4650 5675 60  0000 C CNN
+F 2 "Housings_SSOP:TSSOP-8_4.4x3mm_Pitch0.65mm" H 4650 5950 60  0001 C CNN
+F 3 "" H 4650 5950 60  0001 C CNN
+	1    4650 5950
+	1    0    0    -1  
+$EndComp
+Connection ~ 9350 3100
+Connection ~ 9350 3000
+Connection ~ 9350 2700
+Connection ~ 9350 2600
+$Comp
+L bluepill_breakouts:BluePill_STM32F103C U1
+U 1 1 5ABD20EB
+P 8450 3200
+F 0 "U1" H 8000 1850 50  0000 C CNN
+F 1 "BluePill_STM32F103C" H 8500 4050 50  0000 C CNN
+F 2 "BluePill_breakouts:BluePill_STM32F103C" H 8500 1600 50  0001 C CNN
+F 3 "www.rogerclark.net" H 8450 1700 50  0001 C CNN
+	1    8450 3200
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
-	4700 4200 4700 4100
-Connection ~ 6600 5550
+	9700 5450 9700 5750
 Wire Wire Line
-	5600 5450 6600 5450
+	9700 5750 9700 6000
+Connection ~ 9700 5750
 Wire Wire Line
-	5600 2900 5600 5450
+	9700 5750 9300 5750
 Wire Wire Line
-	4700 2900 5600 2900
+	9500 5450 9500 6000
 Wire Wire Line
-	4500 3400 4700 3400
+	9500 5350 9500 5450
+Connection ~ 9500 5450
 Wire Wire Line
-	4500 2900 4500 3400
-Wire Wire Line
-	4200 2900 4500 2900
-Wire Wire Line
-	4650 3800 4700 3800
-Wire Wire Line
-	4650 5000 4650 3800
-Wire Wire Line
-	6900 5000 4650 5000
-Wire Wire Line
-	6900 3600 6900 5000
-Wire Wire Line
-	7950 3600 6900 3600
-Connection ~ 9050 3900
-Wire Wire Line
-	9050 3800 9050 3900
-Connection ~ 3200 2150
-Wire Wire Line
-	3550 2150 3200 2150
-Connection ~ 4300 2150
-Wire Wire Line
-	3850 2150 4300 2150
-Connection ~ 5900 1250
-Connection ~ 5900 950 
-Connection ~ 6700 5900
-Wire Wire Line
-	7750 1250 7750 1550
-Wire Wire Line
-	5200 950  4600 950 
-Wire Wire Line
-	5200 950  5900 950 
-Wire Wire Line
-	6450 950  6450 2400
-Connection ~ 7050 950 
-Wire Wire Line
-	7250 3800 7250 5250
-Wire Wire Line
-	7250 5250 4350 5250
-Wire Wire Line
-	4350 5250 4350 3700
-Wire Wire Line
-	2900 3700 4350 3700
-Wire Wire Line
-	7050 3700 7050 5150
-Wire Wire Line
-	7050 5150 4500 5150
-Wire Wire Line
-	4500 5150 4500 3500
-Wire Wire Line
-	3000 3500 4500 3500
-Wire Wire Line
-	4200 5350 7600 5350
-Wire Wire Line
-	4200 3000 4200 3600
-Wire Wire Line
-	4200 3600 4700 3600
-Connection ~ 6450 950 
-Wire Wire Line
-	3200 1250 4200 1250
-Wire Wire Line
-	6600 2700 6450 2700
-Wire Wire Line
-	6600 1250 6600 2700
-Connection ~ 6600 1250
-Wire Wire Line
-	4700 4400 4700 4500
-Wire Wire Line
-	4700 4600 5350 4600
-Wire Wire Line
-	5350 4600 5350 1250
-Connection ~ 4700 4500
-Wire Wire Line
-	4700 4300 5200 4300
-Wire Wire Line
-	5200 4300 5200 950 
-Wire Wire Line
-	9050 950  9050 3600
-Wire Wire Line
-	9050 3900 9250 3900
-Wire Wire Line
-	9250 1250 9250 3900
-Connection ~ 7750 1250
-Wire Wire Line
-	7950 3700 7050 3700
-Wire Wire Line
-	7950 3800 7250 3800
-Wire Wire Line
-	7950 3900 7600 3900
-Wire Wire Line
-	7600 3900 7600 5350
-Wire Wire Line
-	6600 5450 6600 5550
-Wire Wire Line
-	6700 1250 6700 5900
-Connection ~ 6700 1250
-Wire Wire Line
-	6800 950  6800 5550
-Connection ~ 6800 950 
-Wire Wire Line
-	6400 5550 6600 5550
-Wire Wire Line
-	6800 5850 6400 5850
-Connection ~ 6800 5850
-Wire Wire Line
-	3200 1250 3200 2150
-Connection ~ 5350 1250
-Connection ~ 3200 2500
-Wire Wire Line
-	4200 2500 4200 1250
-Connection ~ 4200 1250
-Wire Wire Line
-	4200 2600 4300 2600
-Wire Wire Line
-	4300 950  4300 2150
-Connection ~ 5200 950 
-Wire Wire Line
-	4300 2700 4200 2700
-Connection ~ 4300 2600
-Connection ~ 4200 3600
-Wire Wire Line
-	3000 3500 3000 2800
-Wire Wire Line
-	3000 2800 3200 2800
-Connection ~ 4500 3500
-Wire Wire Line
-	2900 3700 2900 2700
-Wire Wire Line
-	2900 2700 3200 2700
-Connection ~ 4350 3700
-Wire Wire Line
-	6800 5550 7000 5550
-Connection ~ 7000 5550
-Connection ~ 6800 5550
-Wire Wire Line
-	6700 5900 7000 5900
-Wire Wire Line
-	7000 5900 7000 5850
-Wire Wire Line
-	7250 5900 7250 5850
-Connection ~ 7000 5900
-Connection ~ 9250 3900
-Wire Wire Line
-	9050 3600 9450 3600
-Wire Wire Line
-	3200 3000 3200 4000
-Wire Wire Line
-	3200 4000 4700 4000
-Wire Wire Line
-	4700 3900 3100 3900
-Wire Wire Line
-	3100 3900 3100 2900
-Wire Wire Line
-	3100 2900 3200 2900
-Wire Wire Line
-	6600 5550 6600 6100
-Wire Wire Line
-	3200 2150 3200 2500
-Wire Wire Line
-	4300 2150 4300 2600
-Wire Wire Line
-	5900 1250 6600 1250
-Wire Wire Line
-	5900 950  6450 950 
-Wire Wire Line
-	6700 5900 6700 6100
-Wire Wire Line
-	7050 950  9050 950 
-Wire Wire Line
-	6450 950  6800 950 
-Wire Wire Line
-	6600 1250 6700 1250
-Wire Wire Line
-	4700 4500 4700 4600
-Wire Wire Line
-	7750 1250 9250 1250
-Wire Wire Line
-	6700 1250 7750 1250
-Wire Wire Line
-	6800 950  7050 950 
-Wire Wire Line
-	6800 5850 6800 6100
-Wire Wire Line
-	5350 1250 5900 1250
-Wire Wire Line
-	3200 2500 3200 2600
-Wire Wire Line
-	4200 1250 5350 1250
-Wire Wire Line
-	4300 2600 4300 2700
-Wire Wire Line
-	4200 3600 4200 5350
-Wire Wire Line
-	4500 3500 4700 3500
-Wire Wire Line
-	4350 3700 4700 3700
-Wire Wire Line
-	7000 5550 7250 5550
-Wire Wire Line
-	6800 5550 6800 5850
-Wire Wire Line
-	7000 5900 7250 5900
-Wire Wire Line
-	9250 3900 9450 3900
+	9300 5450 9500 5450
 $Comp
-L device:CP C6
-U 1 1 5ABEBD7D
-P 7000 2850
-F 0 "C6" H 6882 2804 50  0000 R CNN
-F 1 "CP" H 6882 2895 50  0000 R CNN
-F 2 "Capacitors_THT:CP_Radial_D4.0mm_P2.00mm" H 7038 2700 50  0001 C CNN
-F 3 "" H 7000 2850 50  0001 C CNN
-	1    7000 2850
-	-1   0    0    1   
-$EndComp
-Wire Wire Line
-	6600 2700 7000 2700
-Connection ~ 6600 2700
-Wire Wire Line
-	7000 3000 6600 3000
-Wire Wire Line
-	6600 3000 6600 2800
-Wire Wire Line
-	6600 2800 6450 2800
-$Comp
-L device:C C7
-U 1 1 5ABF15CD
-P 7000 2550
-F 0 "C7" H 7025 2650 50  0000 L CNN
-F 1 "C" H 7025 2450 50  0000 L CNN
-F 2 "Capacitors_THT:C_Disc_D3.0mm_W2.0mm_P2.50mm" H 7038 2400 50  0001 C CNN
-F 3 "" H 7000 2550 50  0001 C CNN
-	1    7000 2550
+L bluepill_ethernet-rescue:R-device R1
+U 1 1 5ABD825B
+P 9300 5600
+F 0 "R1" V 9380 5600 50  0000 C CNN
+F 1 "R" V 9300 5600 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 9230 5600 50  0001 C CNN
+F 3 "" H 9300 5600 50  0001 C CNN
+	1    9300 5600
 	1    0    0    -1  
 $EndComp
-Connection ~ 7000 2700
 Wire Wire Line
-	7000 2400 6450 2400
-Connection ~ 6450 2400
+	9350 3000 10300 3000
 Wire Wire Line
-	6450 2400 6450 2600
+	10300 3000 10300 2800
+Wire Wire Line
+	10450 3100 9350 3100
+Wire Wire Line
+	10450 2800 10450 3100
 $Comp
-L switches:SW_Push SW1
+L bluepill_ethernet-rescue:R-device R2
+U 1 1 5B105A17
+P 10450 2650
+F 0 "R2" V 10530 2650 50  0000 C CNN
+F 1 "R" V 10450 2650 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 10380 2650 50  0001 C CNN
+F 3 "" H 10450 2650 50  0001 C CNN
+	1    10450 2650
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	9350 2500 10300 2500
+Wire Wire Line
+	10450 2500 10300 2500
+Connection ~ 10300 2500
+$Comp
+L bluepill_ethernet-rescue:R-device R3
+U 1 1 5B105160
+P 10300 2650
+F 0 "R3" V 10380 2650 50  0000 C CNN
+F 1 "R" V 10300 2650 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 10230 2650 50  0001 C CNN
+F 3 "" H 10300 2650 50  0001 C CNN
+	1    10300 2650
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	11050 650  9700 650 
+$Comp
+L bluepill_ethernet-rescue:Conn_02x05_Odd_Even-conn J3
+U 1 1 5B1F5D26
+P 1950 1250
+F 0 "J3" H 2000 1667 50  0000 C CNN
+F 1 "Conn_02x05_Odd_Even" H 2000 1576 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_2x05_Pitch2.54mm" H 1950 1250 50  0001 C CNN
+F 3 "~" H 1950 1250 50  0001 C CNN
+	1    1950 1250
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3500 7000 3500 1950
+Connection ~ 3750 6550
+Wire Wire Line
+	3750 6550 3000 6550
+Connection ~ 3850 6650
+Wire Wire Line
+	3850 6650 2800 6650
+Connection ~ 3950 6750
+Wire Wire Line
+	3950 6750 2600 6750
+Wire Wire Line
+	1400 3400 3000 3400
+Connection ~ 3000 3400
+Wire Wire Line
+	3000 3400 3000 6550
+Wire Wire Line
+	1300 3600 2800 3600
+Connection ~ 2800 3600
+Wire Wire Line
+	2800 3600 2800 6650
+Wire Wire Line
+	2600 3500 2600 6750
+Wire Wire Line
+	5450 650  4000 650 
+Wire Wire Line
+	1600 2450 1600 3900
+Connection ~ 3300 3900
+Wire Wire Line
+	1600 3900 3300 3900
+Wire Wire Line
+	3300 1350 3300 3900
+Wire Wire Line
+	7600 4100 7600 4000
+Wire Wire Line
+	3300 3900 7600 3900
+Wire Wire Line
+	7600 3800 1500 3800
+Wire Wire Line
+	3650 3700 7600 3700
+Wire Wire Line
+	2800 3600 7600 3600
+Wire Wire Line
+	2600 3500 7600 3500
+Wire Wire Line
+	3000 3400 7600 3400
+Wire Wire Line
+	3400 3300 7600 3300
+Wire Wire Line
+	7350 5350 9500 5350
+Wire Wire Line
+	7600 2800 7350 2800
+Wire Wire Line
+	7350 2800 7350 5350
+Wire Wire Line
+	9350 650  7250 650 
+Connection ~ 7250 650 
+Wire Wire Line
+	7600 4200 7250 4200
+Wire Wire Line
+	7250 4200 7250 650 
+Wire Wire Line
+	7600 3200 6600 3200
+Wire Wire Line
+	6600 3200 6600 4150
+Wire Wire Line
+	7600 3100 6400 3100
+Wire Wire Line
+	6400 3100 6400 4150
+Wire Wire Line
+	7600 3000 6150 3000
+Wire Wire Line
+	6150 3000 6150 4150
+Wire Wire Line
+	7600 2900 6500 2900
+Wire Wire Line
+	6500 650  5450 650 
+Connection ~ 6500 650 
+Wire Wire Line
+	7250 650  6500 650 
+Wire Wire Line
+	6500 2900 6500 2750
+Wire Wire Line
+	6500 2350 6500 650 
+$Comp
+L bluepill_ethernet-rescue:SW_Push-switches SW1
 U 1 1 5ADFA2DD
-P 4600 2550
-F 0 "SW1" V 4554 2698 50  0000 L CNN
-F 1 "SW_Push" V 4645 2698 50  0000 L CNN
-F 2 "Buttons_Switches_THT:SW_PUSH_6mm" H 4600 2750 50  0001 C CNN
-F 3 "" H 4600 2750 50  0001 C CNN
-	1    4600 2550
+P 6500 2550
+F 0 "SW1" V 6454 2698 50  0000 L CNN
+F 1 "SW_Push" V 6545 2698 50  0000 L CNN
+F 2 "Buttons_Switches_THT:SW_PUSH_6mm" H 6500 2750 50  0001 C CNN
+F 3 "" H 6500 2750 50  0001 C CNN
+	1    6500 2550
 	0    1    1    0   
 $EndComp
-Wire Wire Line
-	4700 3000 4600 3000
-Wire Wire Line
-	4600 3000 4600 2750
-Wire Wire Line
-	4600 2350 4600 950 
-Connection ~ 4600 950 
-Wire Wire Line
-	4600 950  4300 950 
+Connection ~ 7600 4300
+Connection ~ 7600 4200
+Connection ~ 7600 4100
+Connection ~ 7600 4000
+Connection ~ 7600 3900
+Connection ~ 7600 3800
+Connection ~ 7600 3700
+Connection ~ 7600 3600
+Connection ~ 7600 3500
+Connection ~ 7600 3400
+Connection ~ 7600 3300
+Connection ~ 7600 3200
+Connection ~ 7600 3100
+Connection ~ 7600 3000
+Connection ~ 7600 2900
+Connection ~ 7600 2800
 $Comp
-L connectors:HEADER-1x20 J1
-U 1 1 5B103221
-P 6600 3550
-F 0 "J1" H 6728 3586 60  0000 L CNB
-F 1 "HEADER-1x20" H 6728 3495 40  0000 L CNN
-F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 6600 3550 60  0001 C CNN
-F 3 "" H 6600 3550 60  0001 C CNN
-F 4 "-" H 6550 4700 40  0001 L BNN "Part"
-F 5 "Connector" H 6550 4800 40  0001 L BNN "Family"
-	1    6600 3550
-	1    0    0    -1  
-$EndComp
-Connection ~ 6450 2600
-Connection ~ 6450 2700
-Connection ~ 6450 2800
-$Comp
-L device:R R3
-U 1 1 5B105160
-P 5750 2900
-F 0 "R3" V 5830 2900 50  0000 C CNN
-F 1 "R" V 5750 2900 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 5680 2900 50  0001 C CNN
-F 3 "" H 5750 2900 50  0001 C CNN
-	1    5750 2900
+L connectors:HEADER-1x20 J4
+U 1 1 5F425C06
+P 7750 3450
+F 0 "J4" H 7878 3486 60  0000 L CNB
+F 1 "HEADER-1x20" H 7878 3395 40  0000 L CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 7750 3450 60  0001 C CNN
+F 3 "" H 7750 3450 60  0001 C CNN
+F 4 "-" H 7700 4600 40  0001 L BNN "Part"
+F 5 "Connector" H 7700 4700 40  0001 L BNN "Family"
+	1    7750 3450
 	1    0    0    -1  
 $EndComp
 $Comp
-L device:R R2
-U 1 1 5B105A17
-P 5650 2900
-F 0 "R2" V 5730 2900 50  0000 C CNN
-F 1 "R" V 5650 2900 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 5580 2900 50  0001 C CNN
-F 3 "" H 5650 2900 50  0001 C CNN
-	1    5650 2900
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	5750 3100 5750 3050
-Wire Wire Line
-	5650 3200 5650 3050
-Wire Wire Line
-	6450 2600 5750 2600
-Wire Wire Line
-	5750 2600 5750 2750
-Wire Wire Line
-	5650 2750 5650 2600
-Wire Wire Line
-	5650 2600 5750 2600
-Connection ~ 5750 2600
-Wire Wire Line
-	5750 3100 6450 3100
-Connection ~ 6450 3100
-Wire Wire Line
-	5650 3200 6450 3200
-Connection ~ 6450 3200
-$Comp
-L device:LED D1
-U 1 1 5B11D9D9
-P 3250 4400
-F 0 "D1" V 3288 4283 50  0000 R CNN
-F 1 "LED" V 3197 4283 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 3250 4400 50  0001 C CNN
-F 3 "" H 3250 4400 50  0001 C CNN
-	1    3250 4400
-	0    -1   -1   0   
-$EndComp
-$Comp
-L device:LED D2
-U 1 1 5B11DDF6
-P 3500 4400
-F 0 "D2" V 3538 4283 50  0000 R CNN
-F 1 "LED" V 3447 4283 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 3500 4400 50  0001 C CNN
-F 3 "" H 3500 4400 50  0001 C CNN
-	1    3500 4400
-	0    -1   -1   0   
-$EndComp
-$Comp
-L device:LED D3
-U 1 1 5B11DE60
-P 3700 4400
-F 0 "D3" V 3738 4283 50  0000 R CNN
-F 1 "LED" V 3647 4283 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 3700 4400 50  0001 C CNN
-F 3 "" H 3700 4400 50  0001 C CNN
-	1    3700 4400
-	0    -1   -1   0   
-$EndComp
-Wire Wire Line
-	4700 3100 3250 3100
-Wire Wire Line
-	3250 3100 3250 4250
-Wire Wire Line
-	4700 3200 3500 3200
-Wire Wire Line
-	3500 3200 3500 4250
-Wire Wire Line
-	4700 3300 3700 3300
-Wire Wire Line
-	3700 3300 3700 4250
-$Comp
-L device:R R4
-U 1 1 5B129B3F
-P 3250 4700
-F 0 "R4" V 3330 4700 50  0000 C CNN
-F 1 "R" V 3250 4700 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4700 50  0001 C CNN
-F 3 "" H 3250 4700 50  0001 C CNN
-	1    3250 4700
-	1    0    0    -1  
-$EndComp
-$Comp
-L device:R R5
-U 1 1 5B129C2D
-P 3500 4700
-F 0 "R5" V 3580 4700 50  0000 C CNN
-F 1 "R" V 3500 4700 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3430 4700 50  0001 C CNN
-F 3 "" H 3500 4700 50  0001 C CNN
-	1    3500 4700
-	1    0    0    -1  
-$EndComp
-$Comp
-L device:R R6
+L bluepill_ethernet-rescue:R-device R6
 U 1 1 5B129C71
-P 3700 4700
-F 0 "R6" V 3780 4700 50  0000 C CNN
-F 1 "R" V 3700 4700 50  0000 C CNN
-F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3630 4700 50  0001 C CNN
-F 3 "" H 3700 4700 50  0001 C CNN
-	1    3700 4700
+P 6600 4600
+F 0 "R6" V 6680 4600 50  0000 C CNN
+F 1 "R" V 6600 4600 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6530 4600 50  0001 C CNN
+F 3 "" H 6600 4600 50  0001 C CNN
+	1    6600 4600
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	4700 4600 4700 5900
-Wire Wire Line
-	4700 5900 3700 5900
-Wire Wire Line
-	3250 5900 3250 4850
-Connection ~ 4700 4600
-Wire Wire Line
-	3500 4850 3500 5900
-Connection ~ 3500 5900
-Wire Wire Line
-	3500 5900 3250 5900
-Wire Wire Line
-	3700 4850 3700 5900
-Connection ~ 3700 5900
-Wire Wire Line
-	3700 5900 3500 5900
-Connection ~ 9050 3600
-Wire Wire Line
-	1750 2500 1750 950 
-Wire Wire Line
-	1750 950  4300 950 
-Connection ~ 4300 950 
-Wire Wire Line
-	1750 2600 1150 2600
-Wire Wire Line
-	1150 2600 1150 3600
-Wire Wire Line
-	1150 3600 4200 3600
-Wire Wire Line
-	1750 2700 1250 2700
-Wire Wire Line
-	1250 3700 2900 3700
-Wire Wire Line
-	1250 2700 1250 3700
-Connection ~ 2900 3700
-Wire Wire Line
-	1750 2800 1350 2800
-Wire Wire Line
-	1750 2900 1450 2900
-Wire Wire Line
-	1450 2900 1450 3500
-Wire Wire Line
-	1450 3500 3000 3500
-Connection ~ 3000 3500
-Wire Wire Line
-	2250 2600 2450 2600
-Wire Wire Line
-	2450 2600 2450 1250
-Wire Wire Line
-	2450 1250 3200 1250
-Connection ~ 3200 1250
-Wire Wire Line
-	2250 2700 2800 2700
-Wire Wire Line
-	2800 2700 2800 3400
-Wire Wire Line
-	2800 3400 4500 3400
-Connection ~ 4500 3400
-Wire Wire Line
-	2700 4000 3200 4000
-Connection ~ 3200 4000
-Wire Wire Line
-	2250 2800 2700 2800
-Wire Wire Line
-	2700 2800 2700 4000
-Connection ~ 3100 3900
-Wire Wire Line
-	1350 2800 1350 3900
-Wire Wire Line
-	1350 3900 3100 3900
 $Comp
-L conn:Conn_02x05_Odd_Even J3
-U 1 1 5B1F5D26
-P 1950 2700
-F 0 "J3" H 2000 3117 50  0000 C CNN
-F 1 "Conn_02x05_Odd_Even" H 2000 3026 50  0000 C CNN
-F 2 "Pin_Headers:Pin_Header_Straight_2x05_Pitch2.54mm" H 1950 2700 50  0001 C CNN
-F 3 "~" H 1950 2700 50  0001 C CNN
-	1    1950 2700
+L bluepill_ethernet-rescue:R-device R5
+U 1 1 5B129C2D
+P 6400 4600
+F 0 "R5" V 6480 4600 50  0000 C CNN
+F 1 "R" V 6400 4600 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6330 4600 50  0001 C CNN
+F 3 "" H 6400 4600 50  0001 C CNN
+	1    6400 4600
 	1    0    0    -1  
 $EndComp
-NoConn ~ 2250 2500
-NoConn ~ 2250 2900
-NoConn ~ 4200 2800
+$Comp
+L bluepill_ethernet-rescue:R-device R4
+U 1 1 5B129B3F
+P 6150 4600
+F 0 "R4" V 6230 4600 50  0000 C CNN
+F 1 "R" V 6150 4600 50  0000 C CNN
+F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6080 4600 50  0001 C CNN
+F 3 "" H 6150 4600 50  0001 C CNN
+	1    6150 4600
+	1    0    0    -1  
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:LED-device D3
+U 1 1 5B11DE60
+P 6600 4300
+F 0 "D3" V 6638 4183 50  0000 R CNN
+F 1 "LED" V 6547 4183 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 6600 4300 50  0001 C CNN
+F 3 "" H 6600 4300 50  0001 C CNN
+	1    6600 4300
+	0    -1   -1   0   
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:LED-device D2
+U 1 1 5B11DDF6
+P 6400 4300
+F 0 "D2" V 6438 4183 50  0000 R CNN
+F 1 "LED" V 6347 4183 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 6400 4300 50  0001 C CNN
+F 3 "" H 6400 4300 50  0001 C CNN
+	1    6400 4300
+	0    -1   -1   0   
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:LED-device D1
+U 1 1 5B11D9D9
+P 6150 4300
+F 0 "D1" V 6188 4183 50  0000 R CNN
+F 1 "LED" V 6097 4183 50  0000 R CNN
+F 2 "LEDs:LED_D3.0mm" H 6150 4300 50  0001 C CNN
+F 3 "" H 6150 4300 50  0001 C CNN
+	1    6150 4300
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	7600 6450 7600 5800
+Wire Wire Line
+	7600 4400 7600 5800
+Connection ~ 7600 5800
+Wire Wire Line
+	6150 5800 6150 4750
+Wire Wire Line
+	6400 4750 6400 5800
+Connection ~ 6400 5800
+Wire Wire Line
+	6400 5800 6150 5800
+Wire Wire Line
+	7600 5800 6600 5800
+Wire Wire Line
+	6600 5800 6400 5800
+Connection ~ 6600 5800
+Wire Wire Line
+	6600 4750 6600 5800
+$Comp
+L bluepill_ethernet-rescue:C-device C7
+U 1 1 5ABF15CD
+P 9900 2450
+F 0 "C7" H 9925 2550 50  0000 L CNN
+F 1 "C" H 9925 2350 50  0000 L CNN
+F 2 "Capacitors_THT:C_Disc_D4.3mm_W1.9mm_P5.00mm" H 9938 2300 50  0001 C CNN
+F 3 "" H 9900 2450 50  0001 C CNN
+	1    9900 2450
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5700 7000 6750 7000
+Wire Wire Line
+	9500 2700 9350 2700
+Wire Wire Line
+	9900 2900 9500 2900
+Wire Wire Line
+	9500 2900 9500 2700
 $EndSCHEMATC
