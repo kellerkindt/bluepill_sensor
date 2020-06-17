@@ -118,7 +118,6 @@ Wire Wire Line
 Connection ~ 9350 2300
 Wire Wire Line
 	9350 2300 9350 2500
-Connection ~ 9350 2500
 Wire Wire Line
 	1750 1150 700  1150
 Wire Wire Line
@@ -360,303 +359,12 @@ F 3 "" H 4650 5950 60  0001 C CNN
 	1    4650 5950
 	1    0    0    -1  
 $EndComp
-Connection ~ 9350 3100
-Connection ~ 9350 3000
-Connection ~ 9350 2700
-Connection ~ 9350 2600
-$Comp
-L bluepill_breakouts:BluePill_STM32F103C U1
-U 1 1 5ABD20EB
-P 8450 3200
-F 0 "U1" H 8000 1850 50  0000 C CNN
-F 1 "BluePill_STM32F103C" H 8500 4050 50  0000 C CNN
-F 2 "BluePill_breakouts:BluePill_STM32F103C" H 8500 1600 50  0001 C CNN
-F 3 "www.rogerclark.net" H 8450 1700 50  0001 C CNN
-	1    8450 3200
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
-	9700 5450 9700 5750
+	9800 2900 9800 2700
 Wire Wire Line
-	9700 5750 9700 6000
-Connection ~ 9700 5750
+	9900 2900 9800 2900
 Wire Wire Line
-	9700 5750 9300 5750
-Wire Wire Line
-	9500 5450 9500 6000
-Wire Wire Line
-	9500 5350 9500 5450
-Connection ~ 9500 5450
-Wire Wire Line
-	9300 5450 9500 5450
-$Comp
-L bluepill_ethernet-rescue:R-device R1
-U 1 1 5ABD825B
-P 9300 5600
-F 0 "R1" V 9380 5600 50  0000 C CNN
-F 1 "R" V 9300 5600 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 9230 5600 50  0001 C CNN
-F 3 "" H 9300 5600 50  0001 C CNN
-	1    9300 5600
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	9350 3000 10300 3000
-Wire Wire Line
-	10300 3000 10300 2800
-Wire Wire Line
-	10450 3100 9350 3100
-Wire Wire Line
-	10450 2800 10450 3100
-$Comp
-L bluepill_ethernet-rescue:R-device R2
-U 1 1 5B105A17
-P 10450 2650
-F 0 "R2" V 10530 2650 50  0000 C CNN
-F 1 "R" V 10450 2650 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 10380 2650 50  0001 C CNN
-F 3 "" H 10450 2650 50  0001 C CNN
-	1    10450 2650
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	9350 2500 10300 2500
-Wire Wire Line
-	10450 2500 10300 2500
-Connection ~ 10300 2500
-$Comp
-L bluepill_ethernet-rescue:R-device R3
-U 1 1 5B105160
-P 10300 2650
-F 0 "R3" V 10380 2650 50  0000 C CNN
-F 1 "R" V 10300 2650 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 10230 2650 50  0001 C CNN
-F 3 "" H 10300 2650 50  0001 C CNN
-	1    10300 2650
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	11050 650  9700 650 
-$Comp
-L bluepill_ethernet-rescue:Conn_02x05_Odd_Even-conn J3
-U 1 1 5B1F5D26
-P 1950 1250
-F 0 "J3" H 2000 1667 50  0000 C CNN
-F 1 "Conn_02x05_Odd_Even" H 2000 1576 50  0000 C CNN
-F 2 "Pin_Headers:Pin_Header_Straight_2x05_Pitch2.54mm" H 1950 1250 50  0001 C CNN
-F 3 "~" H 1950 1250 50  0001 C CNN
-	1    1950 1250
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	3500 7000 3500 1950
-Connection ~ 3750 6550
-Wire Wire Line
-	3750 6550 3000 6550
-Connection ~ 3850 6650
-Wire Wire Line
-	3850 6650 2800 6650
-Connection ~ 3950 6750
-Wire Wire Line
-	3950 6750 2600 6750
-Wire Wire Line
-	1400 3400 3000 3400
-Connection ~ 3000 3400
-Wire Wire Line
-	3000 3400 3000 6550
-Wire Wire Line
-	1300 3600 2800 3600
-Connection ~ 2800 3600
-Wire Wire Line
-	2800 3600 2800 6650
-Wire Wire Line
-	2600 3500 2600 6750
-Wire Wire Line
-	5450 650  4000 650 
-Wire Wire Line
-	1600 2450 1600 3900
-Connection ~ 3300 3900
-Wire Wire Line
-	1600 3900 3300 3900
-Wire Wire Line
-	3300 1350 3300 3900
-Wire Wire Line
-	7600 4100 7600 4000
-Wire Wire Line
-	3300 3900 7600 3900
-Wire Wire Line
-	7600 3800 1500 3800
-Wire Wire Line
-	3650 3700 7600 3700
-Wire Wire Line
-	2800 3600 7600 3600
-Wire Wire Line
-	2600 3500 7600 3500
-Wire Wire Line
-	3000 3400 7600 3400
-Wire Wire Line
-	3400 3300 7600 3300
-Wire Wire Line
-	7350 5350 9500 5350
-Wire Wire Line
-	7600 2800 7350 2800
-Wire Wire Line
-	7350 2800 7350 5350
-Wire Wire Line
-	9350 650  7250 650 
-Connection ~ 7250 650 
-Wire Wire Line
-	7600 4200 7250 4200
-Wire Wire Line
-	7250 4200 7250 650 
-Wire Wire Line
-	7600 3200 6600 3200
-Wire Wire Line
-	6600 3200 6600 4150
-Wire Wire Line
-	7600 3100 6400 3100
-Wire Wire Line
-	6400 3100 6400 4150
-Wire Wire Line
-	7600 3000 6150 3000
-Wire Wire Line
-	6150 3000 6150 4150
-Wire Wire Line
-	7600 2900 6500 2900
-Wire Wire Line
-	6500 650  5450 650 
-Connection ~ 6500 650 
-Wire Wire Line
-	7250 650  6500 650 
-Wire Wire Line
-	6500 2900 6500 2750
-Wire Wire Line
-	6500 2350 6500 650 
-$Comp
-L bluepill_ethernet-rescue:SW_Push-switches SW1
-U 1 1 5ADFA2DD
-P 6500 2550
-F 0 "SW1" V 6454 2698 50  0000 L CNN
-F 1 "SW_Push" V 6545 2698 50  0000 L CNN
-F 2 "Buttons_Switches_THT:SW_PUSH_6mm" H 6500 2750 50  0001 C CNN
-F 3 "" H 6500 2750 50  0001 C CNN
-	1    6500 2550
-	0    1    1    0   
-$EndComp
-Connection ~ 7600 4300
-Connection ~ 7600 4200
-Connection ~ 7600 4100
-Connection ~ 7600 4000
-Connection ~ 7600 3900
-Connection ~ 7600 3800
-Connection ~ 7600 3700
-Connection ~ 7600 3600
-Connection ~ 7600 3500
-Connection ~ 7600 3400
-Connection ~ 7600 3300
-Connection ~ 7600 3200
-Connection ~ 7600 3100
-Connection ~ 7600 3000
-Connection ~ 7600 2900
-Connection ~ 7600 2800
-$Comp
-L connectors:HEADER-1x20 J4
-U 1 1 5F425C06
-P 7750 3450
-F 0 "J4" H 7878 3486 60  0000 L CNB
-F 1 "HEADER-1x20" H 7878 3395 40  0000 L CNN
-F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 7750 3450 60  0001 C CNN
-F 3 "" H 7750 3450 60  0001 C CNN
-F 4 "-" H 7700 4600 40  0001 L BNN "Part"
-F 5 "Connector" H 7700 4700 40  0001 L BNN "Family"
-	1    7750 3450
-	1    0    0    -1  
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:R-device R6
-U 1 1 5B129C71
-P 6600 4600
-F 0 "R6" V 6680 4600 50  0000 C CNN
-F 1 "R" V 6600 4600 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6530 4600 50  0001 C CNN
-F 3 "" H 6600 4600 50  0001 C CNN
-	1    6600 4600
-	1    0    0    -1  
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:R-device R5
-U 1 1 5B129C2D
-P 6400 4600
-F 0 "R5" V 6480 4600 50  0000 C CNN
-F 1 "R" V 6400 4600 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6330 4600 50  0001 C CNN
-F 3 "" H 6400 4600 50  0001 C CNN
-	1    6400 4600
-	1    0    0    -1  
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:R-device R4
-U 1 1 5B129B3F
-P 6150 4600
-F 0 "R4" V 6230 4600 50  0000 C CNN
-F 1 "R" V 6150 4600 50  0000 C CNN
-F 2 "Resistors_Universal:Resistor_SMD+THTuniversal_0805to1206_RM10_HandSoldering" V 6080 4600 50  0001 C CNN
-F 3 "" H 6150 4600 50  0001 C CNN
-	1    6150 4600
-	1    0    0    -1  
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:LED-device D3
-U 1 1 5B11DE60
-P 6600 4300
-F 0 "D3" V 6638 4183 50  0000 R CNN
-F 1 "LED" V 6547 4183 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 6600 4300 50  0001 C CNN
-F 3 "" H 6600 4300 50  0001 C CNN
-	1    6600 4300
-	0    -1   -1   0   
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:LED-device D2
-U 1 1 5B11DDF6
-P 6400 4300
-F 0 "D2" V 6438 4183 50  0000 R CNN
-F 1 "LED" V 6347 4183 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 6400 4300 50  0001 C CNN
-F 3 "" H 6400 4300 50  0001 C CNN
-	1    6400 4300
-	0    -1   -1   0   
-$EndComp
-$Comp
-L bluepill_ethernet-rescue:LED-device D1
-U 1 1 5B11D9D9
-P 6150 4300
-F 0 "D1" V 6188 4183 50  0000 R CNN
-F 1 "LED" V 6097 4183 50  0000 R CNN
-F 2 "LEDs:LED_D3.0mm" H 6150 4300 50  0001 C CNN
-F 3 "" H 6150 4300 50  0001 C CNN
-	1    6150 4300
-	0    -1   -1   0   
-$EndComp
-Wire Wire Line
-	7600 6450 7600 5800
-Wire Wire Line
-	7600 4400 7600 5800
-Connection ~ 7600 5800
-Wire Wire Line
-	6150 5800 6150 4750
-Wire Wire Line
-	6400 4750 6400 5800
-Connection ~ 6400 5800
-Wire Wire Line
-	6400 5800 6150 5800
-Wire Wire Line
-	7600 5800 6600 5800
-Wire Wire Line
-	6600 5800 6400 5800
-Connection ~ 6600 5800
-Wire Wire Line
-	6600 4750 6600 5800
+	9800 2700 9350 2700
 $Comp
 L bluepill_ethernet-rescue:C-device C7
 U 1 1 5ABF15CD
@@ -669,11 +377,823 @@ F 3 "" H 9900 2450 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
+	7600 4400 7600 6450
+Wire Wire Line
 	5700 7000 6750 7000
+$Comp
+L bluepill_ethernet-rescue:SW_Push-switches SW1
+U 1 1 5ADFA2DD
+P 5600 2500
+F 0 "SW1" V 5554 2648 50  0000 L CNN
+F 1 "SW_Push" V 5645 2648 50  0000 L CNN
+F 2 "Buttons_Switches_THT:SW_PUSH_6mm" H 5600 2700 50  0001 C CNN
+F 3 "" H 5600 2700 50  0001 C CNN
+	1    5600 2500
+	0    1    1    0   
+$EndComp
 Wire Wire Line
-	9500 2700 9350 2700
+	5600 2300 5600 650 
+Connection ~ 5600 650 
 Wire Wire Line
-	9900 2900 9500 2900
+	5600 650  5450 650 
 Wire Wire Line
-	9500 2900 9500 2700
+	5600 2900 5600 2700
+Connection ~ 6150 650 
+Wire Wire Line
+	6150 650  5600 650 
+$Comp
+L connectors:HEADER-1x20 J4
+U 1 1 5F425C06
+P 6750 3450
+F 0 "J4" H 6878 3486 60  0000 L CNB
+F 1 "HEADER-1x20" H 6878 3395 40  0000 L CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x20_Pitch2.54mm" H 6750 3450 60  0001 C CNN
+F 3 "" H 6750 3450 60  0001 C CNN
+F 4 "-" H 6700 4600 40  0001 L BNN "Part"
+F 5 "Connector" H 6700 4700 40  0001 L BNN "Family"
+	1    6750 3450
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	7600 2900 6600 2900
+Wire Wire Line
+	6600 2900 5600 2900
+Connection ~ 6600 2900
+Wire Wire Line
+	7600 3000 6600 3000
+Connection ~ 6600 3000
+Wire Wire Line
+	7600 3100 6600 3100
+Wire Wire Line
+	7600 3200 6600 3200
+Wire Wire Line
+	6600 3200 5800 3200
+Connection ~ 6600 3200
+Wire Wire Line
+	3400 3300 6600 3300
+Wire Wire Line
+	6600 3300 7600 3300
+Connection ~ 6600 3300
+Wire Wire Line
+	6600 3400 7600 3400
+Connection ~ 6600 3400
+Wire Wire Line
+	6600 3500 7600 3500
+Connection ~ 6600 3500
+Wire Wire Line
+	6600 3600 7600 3600
+Connection ~ 6600 3600
+Wire Wire Line
+	3650 3700 6600 3700
+Wire Wire Line
+	6600 3700 7600 3700
+Connection ~ 6600 3700
+Wire Wire Line
+	7600 3800 6600 3800
+Wire Wire Line
+	6600 3800 1500 3800
+Connection ~ 6600 3800
+Wire Wire Line
+	6600 3900 7600 3900
+Wire Wire Line
+	7600 4200 6600 4200
+Wire Wire Line
+	6600 4200 6150 4200
+Connection ~ 6600 4200
+Wire Wire Line
+	6600 2600 7600 2600
+Wire Wire Line
+	7600 4000 6600 4000
+Wire Wire Line
+	6600 4100 7600 4100
+Wire Wire Line
+	7600 4300 6600 4300
+Wire Wire Line
+	6600 4400 7600 4400
+Wire Wire Line
+	5800 3200 5800 5350
+Wire Wire Line
+	5800 5350 9500 5350
+Wire Wire Line
+	3300 1350 3300 3000
+Connection ~ 3300 3000
+Wire Wire Line
+	3300 3000 6600 3000
+Wire Wire Line
+	1600 2450 1600 3000
+Wire Wire Line
+	1600 3000 3300 3000
+Connection ~ 6600 3900
+Connection ~ 6600 4000
+Wire Wire Line
+	6600 3900 4550 3900
+Wire Wire Line
+	4550 3900 600  3900
+Connection ~ 4550 3900
+Wire Wire Line
+	700  4000 4650 4000
+Wire Wire Line
+	4750 4000 6600 4000
+Connection ~ 4750 4000
+Wire Wire Line
+	3750 5900 3750 3400
+Connection ~ 3750 5900
+Wire Wire Line
+	3750 3400 6600 3400
+Connection ~ 3750 3400
+Wire Wire Line
+	3850 6000 3850 3600
+Connection ~ 3850 6000
+Wire Wire Line
+	3850 3600 6600 3600
+Connection ~ 3850 3600
+Wire Wire Line
+	3950 6100 3950 3500
+Connection ~ 3950 6100
+Wire Wire Line
+	2600 3500 3950 3500
+Wire Wire Line
+	3950 3500 6600 3500
+Connection ~ 3950 3500
+Wire Wire Line
+	1300 3600 3850 3600
+Wire Wire Line
+	1400 3400 3750 3400
+Wire Wire Line
+	1800 5150 1950 4550
+Wire Wire Line
+	1950 4850 1800 5250
+Wire Wire Line
+	1800 5350 1950 5150
+Wire Wire Line
+	1950 5450 1800 5450
+Wire Wire Line
+	1800 5550 1950 5750
+Wire Wire Line
+	1950 6050 1800 5650
+Wire Wire Line
+	1800 5750 1950 6350
+Wire Wire Line
+	1950 6650 1800 5850
+Wire Wire Line
+	3500 7000 2900 7000
+Connection ~ 3500 7000
+$Comp
+L bluepill_ethernet-rescue:Conn_02x05_Odd_Even-conn J3
+U 1 1 5B1F5D26
+P 1950 1250
+F 0 "J3" H 2000 1667 50  0000 C CNN
+F 1 "Conn_02x05_Odd_Even" H 2000 1576 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_2x05_Pitch2.54mm" H 1950 1250 50  0001 C CNN
+F 3 "~" H 1950 1250 50  0001 C CNN
+	1    1950 1250
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6950 2700 6600 2700
+Wire Wire Line
+	6600 2800 6950 2800
+Wire Wire Line
+	7600 2700 7450 2700
+Wire Wire Line
+	7600 2800 7450 2800
+$Comp
+L Connector_Generic:Conn_02x02_Odd_Even J5
+U 1 1 5F1F9341
+P 7150 2700
+F 0 "J5" H 7200 2917 50  0000 C CNN
+F 1 "Conn_02x02_Odd_Even" H 7200 2826 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_2x02_P2.54mm_Vertical" H 7150 2700 50  0001 C CNN
+F 3 "~" H 7150 2700 50  0001 C CNN
+	1    7150 2700
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3500 6800 3500 7000
+Wire Wire Line
+	3500 7050 3500 7000
+Connection ~ 6600 2700
+Wire Wire Line
+	6600 2700 6400 2700
+Wire Wire Line
+	6300 2800 6600 2800
+Connection ~ 6600 2800
+Text GLabel 5000 2400 3    60   Input ~ 0
+dled1
+Text GLabel 5000 1300 1    60   Input ~ 0
+dled2
+$Comp
+L Device:R_Network08 RN2
+U 1 1 5F2A9077
+P 10450 850
+F 0 "RN2" H 9970 896 50  0000 R CNN
+F 1 "4,7k" H 9970 805 50  0000 R CNN
+F 2 "Resistor_THT:R_Array_SIP9" V 10925 850 50  0001 C CNN
+F 3 "http://www.vishay.com/docs/31509/csc.pdf" H 10450 850 50  0001 C CNN
+	1    10450 850 
+	-1   0    0    -1  
+$EndComp
+Text GLabel 10550 1350 3    60   Input ~ 0
+dled1
+Text GLabel 10450 1350 3    60   Input ~ 0
+dled2
+Wire Wire Line
+	11050 650  10850 650 
+Wire Wire Line
+	10850 650  9700 650 
+Connection ~ 10850 650 
+Wire Wire Line
+	9500 5350 10850 5350
+Wire Wire Line
+	10850 5350 10850 1950
+Connection ~ 9500 5350
+$Comp
+L Device:LED D1
+U 1 1 5F306567
+P 5000 2250
+F 0 "D1" V 4947 2328 50  0000 L CNN
+F 1 "LED" V 5038 2328 50  0000 L CNN
+F 2 "LED_THT:LED_D3.0mm" H 5000 2250 50  0001 C CNN
+F 3 "~" H 5000 2250 50  0001 C CNN
+	1    5000 2250
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	6150 650  6150 4200
+$Comp
+L Device:LED D2
+U 1 1 5F305A99
+P 5000 1450
+F 0 "D2" V 5039 1333 50  0000 R CNN
+F 1 "LED" V 4948 1333 50  0000 R CNN
+F 2 "LED_THT:LED_D3.0mm" H 5000 1450 50  0001 C CNN
+F 3 "~" H 5000 1450 50  0001 C CNN
+	1    5000 1450
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	9500 5350 9500 6000
+Wire Wire Line
+	9700 5450 9700 6000
+Text GLabel 10250 1350 3    60   Input ~ 0
+i2c1c
+Text GLabel 10150 1350 3    60   Input ~ 0
+i2c1d
+Wire Wire Line
+	4000 650  4800 650 
+Wire Wire Line
+	4750 4000 4750 4150
+Wire Wire Line
+	4550 4150 4550 3900
+Wire Wire Line
+	6400 1600 5100 1600
+Wire Wire Line
+	6400 1600 6400 2700
+Wire Wire Line
+	6300 2100 5100 2100
+Wire Wire Line
+	6300 2100 6300 2800
+Wire Wire Line
+	4550 3900 4550 2200
+Connection ~ 4650 4000
+Wire Wire Line
+	4650 4000 4750 4000
+Text GLabel 4750 4150 2    60   Input ~ 0
+i2c1d
+Text GLabel 4550 4150 0    60   Input ~ 0
+i2c1c
+Wire Wire Line
+	10750 3000 10750 1350
+Wire Wire Line
+	9350 3000 10750 3000
+Wire Wire Line
+	9350 3100 10650 3100
+$Comp
+L power:VCC #PWR0101
+U 1 1 5F05A26E
+P 1300 4400
+F 0 "#PWR0101" H 1300 4250 50  0001 C CNN
+F 1 "VCC" H 1300 4550 50  0000 C CNN
+F 2 "" H 1300 4400 50  0001 C CNN
+F 3 "" H 1300 4400 50  0001 C CNN
+	1    1300 4400
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2250 4550 2500 5150
+$Comp
+L Device:LED D4
+U 1 1 5F09219D
+P 2100 4850
+F 0 "D4" H 2093 5066 50  0000 C CNN
+F 1 "LED" H 2093 4975 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 4850 50  0001 C CNN
+F 3 "~" H 2100 4850 50  0001 C CNN
+	1    2100 4850
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2500 5250 2250 4850
+Wire Wire Line
+	2250 5150 2500 5350
+Wire Wire Line
+	2500 5450 2250 5450
+Wire Wire Line
+	2250 5750 2500 5550
+Wire Wire Line
+	2500 5650 2250 6050
+Wire Wire Line
+	2250 6350 2500 5750
+Wire Wire Line
+	2500 5850 2250 6650
+Wire Wire Line
+	600  3900 600  5150
+Wire Wire Line
+	700  4000 700  5250
+Wire Wire Line
+	600  5150 800  5150
+Wire Wire Line
+	700  5250 800  5250
+Wire Wire Line
+	1300 7000 1300 6250
+$Comp
+L Interface_Expansion:PCF8574A U5
+U 1 1 5F1937B2
+P 1300 5550
+F 0 "U5" H 1300 6431 50  0000 C CNN
+F 1 "PCF8574A" H 1300 6340 50  0000 C CNN
+F 2 "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm" H 1300 5550 50  0001 C CNN
+F 3 "http://www.nxp.com/documents/data_sheet/PCF8574_PCF8574A.pdf" H 1300 5550 50  0001 C CNN
+	1    1300 5550
+	1    0    0    -1  
+$EndComp
+NoConn ~ 800  5950
+Wire Wire Line
+	800  5450 650  5450
+Wire Wire Line
+	650  5450 650  5550
+Wire Wire Line
+	650  5550 800  5550
+Wire Wire Line
+	800  5650 650  5650
+Wire Wire Line
+	650  5650 650  5550
+Connection ~ 650  5550
+Wire Wire Line
+	650  5650 650  7000
+Wire Wire Line
+	650  7000 1300 7000
+Connection ~ 650  5650
+Connection ~ 1300 7000
+Wire Wire Line
+	3500 1950 3500 7000
+Wire Wire Line
+	1300 4850 1300 4500
+Wire Wire Line
+	1300 4500 2900 4500
+Wire Wire Line
+	2900 4500 2900 5150
+Connection ~ 1300 4500
+Wire Wire Line
+	1300 4500 1300 4400
+$Comp
+L Device:LED D3
+U 1 1 5F74D6FC
+P 2100 4550
+F 0 "D3" H 2093 4766 50  0000 C CNN
+F 1 "LED" H 2093 4675 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 4550 50  0001 C CNN
+F 3 "~" H 2100 4550 50  0001 C CNN
+	1    2100 4550
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D5
+U 1 1 5F74D8AD
+P 2100 5150
+F 0 "D5" H 2093 5366 50  0000 C CNN
+F 1 "LED" H 2093 5275 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 5150 50  0001 C CNN
+F 3 "~" H 2100 5150 50  0001 C CNN
+	1    2100 5150
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D6
+U 1 1 5F74DE69
+P 2100 5450
+F 0 "D6" H 2093 5666 50  0000 C CNN
+F 1 "LED" H 2093 5575 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 5450 50  0001 C CNN
+F 3 "~" H 2100 5450 50  0001 C CNN
+	1    2100 5450
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D7
+U 1 1 5F74E0C9
+P 2100 5750
+F 0 "D7" H 2093 5966 50  0000 C CNN
+F 1 "LED" H 2093 5875 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 5750 50  0001 C CNN
+F 3 "~" H 2100 5750 50  0001 C CNN
+	1    2100 5750
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D8
+U 1 1 5F74E2FE
+P 2100 6050
+F 0 "D8" H 2093 6266 50  0000 C CNN
+F 1 "LED" H 2093 6175 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 6050 50  0001 C CNN
+F 3 "~" H 2100 6050 50  0001 C CNN
+	1    2100 6050
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D9
+U 1 1 5F74E584
+P 2100 6350
+F 0 "D9" H 2093 6566 50  0000 C CNN
+F 1 "LED" H 2093 6475 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 6350 50  0001 C CNN
+F 3 "~" H 2100 6350 50  0001 C CNN
+	1    2100 6350
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D10
+U 1 1 5F74E791
+P 2100 6650
+F 0 "D10" H 2093 6866 50  0000 C CNN
+F 1 "LED" H 2093 6775 50  0000 C CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2100 6650 50  0001 C CNN
+F 3 "~" H 2100 6650 50  0001 C CNN
+	1    2100 6650
+	1    0    0    -1  
+$EndComp
+Connection ~ 6600 4100
+Wire Wire Line
+	6600 4100 5700 4100
+Connection ~ 6600 3100
+Wire Wire Line
+	6600 3100 5700 3100
+Wire Wire Line
+	5700 3100 5700 4100
+Wire Wire Line
+	10350 1950 10850 1950
+$Comp
+L Jumper:SolderJumper_2_Bridged JP1
+U 1 1 5F765C2C
+P 10350 1800
+F 0 "JP1" V 10304 1868 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10395 1868 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10350 1800 50  0001 C CNN
+F 3 "~" H 10350 1800 50  0001 C CNN
+	1    10350 1800
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	10850 1650 10850 1050
+Wire Wire Line
+	10350 1650 10350 1050
+$Comp
+L Jumper:SolderJumper_2_Bridged JP2
+U 1 1 5F782A60
+P 10850 1800
+F 0 "JP2" V 10804 1868 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10895 1868 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10850 1800 50  0001 C CNN
+F 3 "~" H 10850 1800 50  0001 C CNN
+	1    10850 1800
+	0    1    1    0   
+$EndComp
+Connection ~ 10850 1950
+$Comp
+L Device:R R1
+U 1 1 5F8367EB
+P 2650 5150
+F 0 "R1" V 2443 5150 50  0000 C CNN
+F 1 "R" V 2534 5150 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5150 50  0001 C CNN
+F 3 "~" H 2650 5150 50  0001 C CNN
+	1    2650 5150
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R2
+U 1 1 5F83AB09
+P 2650 5250
+F 0 "R2" V 2443 5250 50  0000 C CNN
+F 1 "R" V 2534 5250 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5250 50  0001 C CNN
+F 3 "~" H 2650 5250 50  0001 C CNN
+	1    2650 5250
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R3
+U 1 1 5F83AD2B
+P 2650 5350
+F 0 "R3" V 2443 5350 50  0000 C CNN
+F 1 "R" V 2534 5350 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5350 50  0001 C CNN
+F 3 "~" H 2650 5350 50  0001 C CNN
+	1    2650 5350
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R4
+U 1 1 5F83AF8D
+P 2650 5450
+F 0 "R4" V 2443 5450 50  0000 C CNN
+F 1 "R" V 2534 5450 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5450 50  0001 C CNN
+F 3 "~" H 2650 5450 50  0001 C CNN
+	1    2650 5450
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R5
+U 1 1 5F83B1A6
+P 2650 5550
+F 0 "R5" V 2443 5550 50  0000 C CNN
+F 1 "R" V 2534 5550 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5550 50  0001 C CNN
+F 3 "~" H 2650 5550 50  0001 C CNN
+	1    2650 5550
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R6
+U 1 1 5F83B3B4
+P 2650 5650
+F 0 "R6" V 2443 5650 50  0000 C CNN
+F 1 "R" V 2534 5650 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5650 50  0001 C CNN
+F 3 "~" H 2650 5650 50  0001 C CNN
+	1    2650 5650
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R7
+U 1 1 5F83B558
+P 2650 5750
+F 0 "R7" V 2443 5750 50  0000 C CNN
+F 1 "R" V 2534 5750 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5750 50  0001 C CNN
+F 3 "~" H 2650 5750 50  0001 C CNN
+	1    2650 5750
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R8
+U 1 1 5F83B73C
+P 2650 5850
+F 0 "R8" V 2443 5850 50  0000 C CNN
+F 1 "R" V 2534 5850 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric" V 2580 5850 50  0001 C CNN
+F 3 "~" H 2650 5850 50  0001 C CNN
+	1    2650 5850
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	2800 5850 2900 5850
+Wire Wire Line
+	2800 5750 2900 5750
+Connection ~ 2900 5750
+Wire Wire Line
+	2900 5750 2900 5850
+Wire Wire Line
+	2900 5650 2800 5650
+Connection ~ 2900 5650
+Wire Wire Line
+	2900 5650 2900 5750
+Wire Wire Line
+	2800 5550 2900 5550
+Connection ~ 2900 5550
+Wire Wire Line
+	2900 5550 2900 5650
+Wire Wire Line
+	2900 5450 2800 5450
+Connection ~ 2900 5450
+Wire Wire Line
+	2900 5450 2900 5550
+Wire Wire Line
+	2800 5350 2900 5350
+Connection ~ 2900 5350
+Wire Wire Line
+	2900 5350 2900 5450
+Wire Wire Line
+	2900 5250 2800 5250
+Connection ~ 2900 5250
+Wire Wire Line
+	2900 5250 2900 5350
+Wire Wire Line
+	2800 5150 2900 5150
+Connection ~ 2900 5150
+Wire Wire Line
+	2900 5150 2900 5250
+$Comp
+L Connector_Generic:Conn_02x04_Odd_Even J7
+U 1 1 5F9EE42C
+P 4900 1900
+F 0 "J7" V 4996 1612 50  0000 R CNN
+F 1 "Conn_02x04_Odd_Even" V 4905 1612 50  0000 R CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_2x04_P2.54mm_Vertical" H 4900 1900 50  0001 C CNN
+F 3 "~" H 4900 1900 50  0001 C CNN
+	1    4900 1900
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	4550 2200 4900 2200
+Wire Wire Line
+	4900 2200 4900 2100
+Wire Wire Line
+	4900 1600 4900 1450
+Wire Wire Line
+	4900 1450 4650 1450
+Wire Wire Line
+	4650 1450 4650 4000
+Wire Wire Line
+	4800 1600 4800 650 
+Connection ~ 4800 650 
+Wire Wire Line
+	4800 650  5450 650 
+$Comp
+L power:GND #PWR0102
+U 1 1 5FA1CA23
+P 4800 2350
+F 0 "#PWR0102" H 4800 2100 50  0001 C CNN
+F 1 "GND" H 4800 2200 50  0000 C CNN
+F 2 "" H 4800 2350 50  0001 C CNN
+F 3 "" H 4800 2350 50  0001 C CNN
+	1    4800 2350
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	4800 2350 4800 2100
+$Comp
+L Sensor_Temperature:LM75B U6
+U 1 1 5FA9C565
+P 2600 9750
+F 0 "U6" H 2600 10431 50  0000 C CNN
+F 1 "LM75B" H 2600 10340 50  0000 C CNN
+F 2 "Package_SO:VSSOP-8_3.0x3.0mm_P0.65mm" H 2600 9750 50  0001 C CNN
+F 3 "http://www.ti.com/lit/ds/symlink/lm75b.pdf" H 2600 9750 50  0001 C CNN
+	1    2600 9750
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2200 9650 700  9650
+Wire Wire Line
+	700  9650 700  5250
+Connection ~ 700  5250
+Wire Wire Line
+	600  5150 600  9750
+Wire Wire Line
+	600  9750 2200 9750
+Connection ~ 600  5150
+$Comp
+L power:GND #PWR0103
+U 1 1 5FABCE5C
+P 2600 10250
+F 0 "#PWR0103" H 2600 10000 50  0001 C CNN
+F 1 "GND" H 2600 10100 50  0000 C CNN
+F 2 "" H 2600 10250 50  0001 C CNN
+F 3 "" H 2600 10250 50  0001 C CNN
+	1    2600 10250
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:VCC #PWR0104
+U 1 1 5FABDC40
+P 2600 9250
+F 0 "#PWR0104" H 2600 9100 50  0001 C CNN
+F 1 "VCC" H 2600 9400 50  0000 C CNN
+F 2 "" H 2600 9250 50  0001 C CNN
+F 3 "" H 2600 9250 50  0001 C CNN
+	1    2600 9250
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3000 9650 3000 9750
+Wire Wire Line
+	3000 9850 3000 9750
+Connection ~ 3000 9750
+Wire Wire Line
+	3000 9850 3000 10250
+Wire Wire Line
+	3000 10250 2600 10250
+Connection ~ 3000 9850
+Connection ~ 2600 10250
+Connection ~ 9350 2500
+Connection ~ 9350 2600
+Connection ~ 9350 2700
+Connection ~ 9350 3000
+Connection ~ 9350 3100
+Connection ~ 7600 4300
+$Comp
+L bluepill_breakouts:BluePill_STM32F103C U1
+U 1 1 5ABD20EB
+P 8450 3200
+F 0 "U1" H 8000 1850 50  0000 C CNN
+F 1 "BluePill_STM32F103C" H 8500 4050 50  0000 C CNN
+F 2 "BluePill_breakouts:BluePill_STM32F103C" H 8500 1600 50  0001 C CNN
+F 3 "www.rogerclark.net" H 8450 1700 50  0001 C CNN
+	1    8450 3200
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6600 2500 7600 2500
+Wire Wire Line
+	6150 650  9350 650 
+$Comp
+L Jumper:SolderJumper_2_Bridged JP3
+U 1 1 5FB7A3F5
+P 10150 1200
+F 0 "JP3" V 10104 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10195 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10150 1200 50  0001 C CNN
+F 3 "~" H 10150 1200 50  0001 C CNN
+	1    10150 1200
+	0    1    1    0   
+$EndComp
+$Comp
+L Jumper:SolderJumper_2_Bridged JP4
+U 1 1 5FB7AA5A
+P 10250 1200
+F 0 "JP4" V 10204 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10295 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10250 1200 50  0001 C CNN
+F 3 "~" H 10250 1200 50  0001 C CNN
+	1    10250 1200
+	0    1    1    0   
+$EndComp
+$Comp
+L Jumper:SolderJumper_2_Bridged JP5
+U 1 1 5FB7B04B
+P 10450 1200
+F 0 "JP5" V 10404 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10495 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10450 1200 50  0001 C CNN
+F 3 "~" H 10450 1200 50  0001 C CNN
+	1    10450 1200
+	0    1    1    0   
+$EndComp
+$Comp
+L Jumper:SolderJumper_2_Bridged JP6
+U 1 1 5FB7B548
+P 10550 1200
+F 0 "JP6" V 10504 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10595 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10550 1200 50  0001 C CNN
+F 3 "~" H 10550 1200 50  0001 C CNN
+	1    10550 1200
+	0    1    1    0   
+$EndComp
+$Comp
+L Jumper:SolderJumper_2_Bridged JP7
+U 1 1 5FB7C981
+P 10650 1200
+F 0 "JP7" V 10604 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10695 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10650 1200 50  0001 C CNN
+F 3 "~" H 10650 1200 50  0001 C CNN
+	1    10650 1200
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	10650 1350 10650 3100
+$Comp
+L Jumper:SolderJumper_2_Bridged JP8
+U 1 1 5FB7D65E
+P 10750 1200
+F 0 "JP8" V 10704 1268 50  0000 L CNN
+F 1 "SolderJumper_2_Bridged" V 10795 1268 50  0000 L CNN
+F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 10750 1200 50  0001 C CNN
+F 3 "~" H 10750 1200 50  0001 C CNN
+	1    10750 1200
+	0    1    1    0   
+$EndComp
+$Comp
+L bluepill_ethernet-rescue:C-device C3
+U 1 1 5FBB6638
+P 2900 6400
+F 0 "C3" H 2925 6500 50  0000 L CNN
+F 1 "C" H 2925 6300 50  0000 L CNN
+F 2 "Capacitor_SMD:C_0805_2012Metric" H 2938 6250 50  0001 C CNN
+F 3 "" H 2900 6400 50  0001 C CNN
+	1    2900 6400
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2900 6250 2900 5850
+Connection ~ 2900 5850
+Wire Wire Line
+	2900 6550 2900 7000
+Connection ~ 2900 7000
+Wire Wire Line
+	2900 7000 1300 7000
 $EndSCHEMATC
