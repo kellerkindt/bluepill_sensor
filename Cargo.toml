@@ -61,5 +61,5 @@ path = "../sensor_common"
 # rev = "da4de59"
 
 [features]
-default = ["ecc"]
+default = []
 ecc = []

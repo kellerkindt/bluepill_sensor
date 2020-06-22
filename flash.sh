@@ -4,7 +4,7 @@ unset CARGO_INCREMENTAL
 BIN="${CARGO_TARGET_DIR:-../target}/thumbv7m-none-eabi/release/bluepill_sensor"
 echo $BIN
 
-./build.sh \
+./build.sh "$@" \
  && openocd \
 	-f interface/stlink-v2.cfg \
 	-f target/stm32f1x.cfg \
