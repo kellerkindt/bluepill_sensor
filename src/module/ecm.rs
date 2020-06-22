@@ -1,5 +1,5 @@
 use crate::io_utils::InputPinInfallible;
-use crate::module::RequestHandler;
+use crate::module::{Module, RequestHandler};
 use crate::platform::{Action, Platform};
 use crate::HandleError;
 use byteorder::ByteOrder;
@@ -31,8 +31,9 @@ pub struct ElectricCounterModule {
     pub ltfm4: LongTimeFreqMeasurement,
 }
 
-impl ElectricCounterModule {
-    pub fn update(&mut self, time_us: u64) {
+impl Module for ElectricCounterModule {
+    fn update(&mut self, platform: &mut Platform) {
+        let time_us = platform.system.info.uptime_us();
         self.ltfm1.update(time_us, self.pa12.is_high_infallible());
         self.ltfm2.update(time_us, self.pa15.is_high_infallible());
         self.ltfm3.update(time_us, self.pb3.is_high_infallible());

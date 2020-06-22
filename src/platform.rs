@@ -1,6 +1,7 @@
+use crate::cnf::NetworkConfiguration;
 use crate::ds93c46::DS93C46;
 use crate::io_utils::OutputPinInfallible;
-use crate::NetworkConfiguration;
+use crate::module::{ModulePeripherals, PlatformConstraints, RequestHandler};
 use crate::{HandleError, System};
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
@@ -9,16 +10,19 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
+use embedded_hal::spi::{Mode, Phase, Polarity};
 use nb::Error as NbError;
 use onewire;
-use onewire::OneWire;
 use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
-use sensor_common::Bus;
-use sensor_common::Format;
+use onewire::{Device, OneWire};
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
+use sensor_common::{Bus, Write as SensorWrite};
+use sensor_common::{Format, Read as SensorRead};
+use stm32f1xx_hal::afio::AfioExt;
+use stm32f1xx_hal::flash::FlashExt;
 use stm32f1xx_hal::gpio::gpioa::PA0;
 use stm32f1xx_hal::gpio::gpioa::PA1;
 use stm32f1xx_hal::gpio::gpioa::PA2;
@@ -33,18 +37,20 @@ use stm32f1xx_hal::gpio::gpiob::PB10;
 use stm32f1xx_hal::gpio::gpiob::PB11;
 use stm32f1xx_hal::gpio::gpioc::PC15;
 use stm32f1xx_hal::gpio::Floating;
+use stm32f1xx_hal::gpio::GpioExt;
 use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::gpio::Output;
 use stm32f1xx_hal::gpio::PushPull;
 use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
 use stm32f1xx_hal::i2c::Error as I2cError;
 use stm32f1xx_hal::pac::SPI1;
+use stm32f1xx_hal::rcc::RccExt;
 use stm32f1xx_hal::spi;
 use stm32f1xx_hal::spi::Spi;
 use stm32f1xx_hal::spi::Spi1NoRemap;
-use stm32f1xx_hal::time::Hertz;
 use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
+use stm32f1xx_hal::time::{Hertz, U32Ext};
 use w5500::*;
 
 pub const SOCKET_UDP: Socket = Socket::Socket0;
@@ -92,30 +98,6 @@ pub struct Platform {
 
     pub(super) network_udp: Option<UdpSocket>,
     pub(super) network_config: NetworkConfiguration,
-    /*
-    pub(super) information: DeviceInformation,
-
-    // periphery
-    pub(super) delay: &'a mut Delay,
-
-    pub(super) onewire: OneWire<OneWireOpenDrain>,
-    pub(super) spi: &'a mut Spi,
-    pub(super) usart1_tx: &'a mut SerialWrite<u8, Error = Infallible>,
-    pub(super) usart1_rx: &'a mut SerialRead<u8, Error = SerialError>,
-
-    pub(super) network: &'a mut W5500<'a, CS>,
-    pub(super) network_reset: NetworkReset,
-    pub(super) network_config: NetworkConfiguration,
-    pub(super) network_udp: Option<UdpSocket>,
-
-    pub(super) humidity: [Am2302<'a>; 0],
-    pub(super) eeprom: DS93C46<ChipSelectEeprom>,
-
-    pub(super) ltfm1: LongTimeFreqMeasurement,
-    pub(super) ltfm2: LongTimeFreqMeasurement,
-    pub(super) ltfm3: LongTimeFreqMeasurement,
-    pub(super) ltfm4: LongTimeFreqMeasurement,
-    */
 }
 
 impl Platform {
@@ -159,8 +141,78 @@ impl Platform {
         Ok(())
     }
 
+    pub fn update(&mut self) {
+        self.system.info.update_uptime_offset();
+    }
+
     pub fn init_onewire(&mut self) -> Result<(), onewire::Error<Infallible>> {
         self.onewire.reset(&mut self.system.delay).map(drop)
+    }
+
+    pub fn handle_udp_request(
+        &mut self,
+        buffer: &mut [u8],
+        module: &mut impl RequestHandler,
+    ) -> Result<(), HandleError> {
+        if let Some((ip, port, size)) = self.receive_udp(buffer)? {
+            self.led_red.set_high_infallible();
+            let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
+            let writer = &mut &mut *response_buffer;
+            let available = writer.available();
+
+            let (response_size, action, request_id) = {
+                let (request, request_length) = {
+                    let reader = &mut &*whole_request_buffer;
+                    let available = reader.available();
+                    (Request::read(reader)?, available - reader.available())
+                };
+
+                let id = request.id();
+                let (_request_header_buffer, request_content_buffer) =
+                    whole_request_buffer.split_at_mut(request_length);
+
+                self.led_blue.set_low_infallible();
+                self.led_yellow.set_low_infallible();
+
+                let action =
+                    self.try_handle_request(request, &mut &*request_content_buffer, writer, module);
+
+                (available - writer.available(), action, id)
+            };
+
+            let reset = match action {
+                Ok(Action::SendResponse) => {
+                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    self.led_yellow.set_high_infallible();
+                    false
+                }
+                Ok(Action::SendResponseAndReset) => {
+                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    true
+                }
+                Ok(Action::HandleRequest(request)) => {
+                    Response::NotImplemented(request.id()).write(writer)?;
+                    let response_size = available - writer.available();
+                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    false
+                }
+                Err(e) => {
+                    let to_skip = available - writer.available();
+                    Response::NotAvailable(request_id).write(writer)?;
+                    let response_size = available - writer.available();
+                    self.send_udp(&ip, port, &response_buffer[to_skip..response_size])?;
+                    return Err(e)?;
+                }
+            };
+
+            if reset {
+                // increase possibility that packet is out
+                self.system.delay.delay_ms(100_u16);
+                let _ = self.load_network_configuration();
+                self.reset();
+            }
+        }
+        Ok(())
     }
 
     pub fn receive_udp(
@@ -197,6 +249,7 @@ impl Platform {
         request: Request,
         request_payload: &mut impl sensor_common::Read,
         response_writer: &mut impl sensor_common::Write,
+        module: &mut impl RequestHandler,
     ) -> Result<Action, HandleError> {
         match request {
             Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
@@ -217,9 +270,9 @@ impl Platform {
                 Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32))
                     .write(response_writer)?;
                 let ms_till_ready =
-                    crate::prepare_requested_on_one_wire(self, request_payload, response_writer)?;
+                    self.onewire_bulk_prepare_read(request_payload, response_writer)?;
                 self.system.delay.delay_ms(ms_till_ready);
-                crate::transmit_requested_on_one_wire(self, request_payload, response_writer)?;
+                self.onewire_bulk_read(request_payload, response_writer)?;
                 Ok(Action::SendResponse)
             }
             Request::SetNetworkMac(id, mac) => {
@@ -258,7 +311,7 @@ impl Platform {
                 buffer[13] = self.system.info.cpu_variant();
                 NetworkEndian::write_u16(&mut buffer[14..], self.system.info.cpu_partnumber());
                 buffer[16] = self.system.info.cpu_revision();
-                buffer[17] = crate::MAGIC_EEPROM_CRC_START;
+                buffer[17] = crate::cnf::MAGIC_EEPROM_CRC_START;
                 buffer[18] = 0x00;
 
                 response_writer.write_all(&buffer)?;
@@ -280,7 +333,7 @@ impl Platform {
                 response_writer.write_all(&version[..len as usize])?;
                 Ok(Action::SendResponse)
             }
-            _ => Ok(Action::HandleRequest(request)),
+            _ => module.try_handle_request(self, request, request_payload, response_writer),
         }
     }
 
@@ -301,6 +354,36 @@ impl Platform {
             _ => {}
         }
         Err(())
+    }
+
+    pub fn onewire_bulk_prepare_read(
+        &mut self,
+        reader: &mut impl sensor_common::Read,
+        writer: &mut impl sensor_common::Write,
+    ) -> Result<u16, HandleError> {
+        let mut ms_to_sleep = 0_u16;
+        while reader.available() >= onewire::ADDRESS_BYTES as usize
+            && writer.available() >= onewire::ADDRESS_BYTES as usize * core::mem::size_of::<f32>()
+        {
+            let device = Device {
+                address: [
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                ],
+            };
+
+            ms_to_sleep = self
+                .onewire_prepare_read(&device)
+                .unwrap_or(0)
+                .max(ms_to_sleep);
+        }
+        Ok(ms_to_sleep)
     }
 
     /// Reads from the given `onewire::Device`. Returns the value as f32.
@@ -325,6 +408,38 @@ impl Platform {
             _ => {}
         }
         Err(())
+    }
+
+    pub fn onewire_bulk_read(
+        &mut self,
+        reader: &mut impl sensor_common::Read,
+        writer: &mut impl sensor_common::Write,
+    ) -> Result<(), HandleError> {
+        while reader.available() >= onewire::ADDRESS_BYTES as usize
+            && writer.available() >= onewire::ADDRESS_BYTES as usize * core::mem::size_of::<f32>()
+        {
+            let device = Device {
+                address: [
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                    reader.read_u8()?,
+                ],
+            };
+
+            let value = self.onewire_read(&device, 1).unwrap_or(::core::f32::NAN);
+
+            let mut buffer = [0u8; 4];
+            NetworkEndian::write_f32(&mut buffer[..], value);
+
+            writer.write_all(&device.address)?;
+            writer.write_all(&buffer)?;
+        }
+        Ok(())
     }
 
     pub fn reset(&mut self) {
@@ -409,4 +524,176 @@ pub enum Action {
     SendResponse,
     SendResponseAndReset,
     HandleRequest(Request),
+}
+
+pub struct PlatformBuilder {
+    platform: Platform,
+    constraints: PlatformConstraints,
+    module_peripherals: ModulePeripherals,
+}
+
+impl PlatformBuilder {
+    /// Tries to take all required peripherals to build the [`Platform`] and potential [`Module`]s
+    /// Requires that both [`cortex_m::Peripherals`] and [`stm32f1xx_hal::pac::Peripherals`] are
+    /// available and will fail if either one is unavailable through [`cp::take()`] or [`p::take()`]
+    ///
+    /// [`Module`]: crate::module::Module
+    /// [`cp::take()`]: cortex_m::Peripherals::take()
+    /// [`p::take()`]: stm32f1xx_hal::pac::Peripherals::take()
+    pub fn take() -> Option<Self> {
+        let cp = cortex_m::Peripherals::take()?;
+        let p = stm32f1xx_hal::pac::Peripherals::take()?;
+        Some(PlatformBuilder::from((cp, p)))
+    }
+
+    pub fn split(self) -> (Platform, PlatformConstraints, ModulePeripherals) {
+        (self.platform, self.constraints, self.module_peripherals)
+    }
+}
+
+impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for PlatformBuilder {
+    fn from((mut cp, p): (cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)) -> Self {
+        let mut flash = p.FLASH.constrain();
+        let mut rcc = p.RCC.constrain();
+        let mut afio = p.AFIO.constrain(&mut rcc.apb2);
+
+        let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
+        let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
+        let mut gpioc = p.GPIOC.split(&mut rcc.apb2);
+
+        let clocks = rcc.cfgr.freeze(&mut flash.acr);
+        let mut delay = stm32f1xx_hal::delay::Delay::new(cp.SYST, clocks);
+
+        // SPI1
+        let sclk = gpioa.pa5.into_alternate_push_pull(&mut gpioa.crl);
+        let miso = gpioa.pa6.into_floating_input(&mut gpioa.crl);
+        let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
+
+        let mut spi: Spi<
+            SPI1,
+            Spi1NoRemap,
+            (
+                PA5<Alternate<PushPull>>,
+                PA6<Input<Floating>>,
+                PA7<Alternate<PushPull>>,
+            ),
+        > = Spi::spi1(
+            p.SPI1,
+            (sclk, miso, mosi),
+            &mut afio.mapr,
+            Mode {
+                polarity: Polarity::IdleLow,
+                phase: Phase::CaptureOnFirstTransition,
+            },
+            1.mhz(), // upt to 8mhz for w5500 module, 2mhz is max for eeprom in 3.3V
+            clocks,
+            &mut rcc.apb2,
+        );
+
+        let mut w5500_reset = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+
+        let platform = Platform {
+            board_reset: {
+                let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
+                self_reset.set_high_infallible();
+                self_reset
+            },
+
+            w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
+            w5500: {
+                let mut w5500_cs = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
+
+                w5500_cs.set_low_infallible(); // deselect
+
+                w5500_reset.set_high_infallible(); // request reset
+                delay.delay_ms(250_u16);
+                w5500_reset.set_low_infallible(); // allow boot
+
+                W5500::with_initialisation(
+                    w5500_cs,
+                    &mut spi,
+                    OnWakeOnLan::Ignore,
+                    OnPingRequest::Respond,
+                    ConnectionType::Ethernet,
+                    ArpResponses::Cache,
+                )
+                .unwrap()
+            },
+
+            spi,
+
+            ds93c46: {
+                let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+                ds93c46_cs.set_low_infallible(); // deselect
+                DS93C46::new(ds93c46_cs)
+            },
+
+            w5500_reset,
+
+            led_red: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
+            led_yellow: gpioa.pa2.into_push_pull_output(&mut gpioa.crl),
+            led_blue: gpioa.pa3.into_push_pull_output(&mut gpioa.crl),
+
+            factory_reset: gpioa.pa0.into_open_drain_output(&mut gpioa.crl),
+
+            onewire: OneWire::new(gpioc.pc15.into_open_drain_output(&mut gpioc.crh), false),
+
+            network_config: NetworkConfiguration::default(),
+            network_udp: None,
+
+            system: {
+                let timer = {
+                    cp.DCB.enable_trace();
+                    ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, clocks)
+                };
+
+                System {
+                    info: DeviceInformation::new(&timer, cp.CPUID.base.read()),
+                    delay,
+                    timer,
+                    led_status: gpioc.pc13.into_push_pull_output(&mut gpioc.crh),
+                }
+            },
+        };
+
+        // let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+        let module_peripherals = ModulePeripherals {
+            pin_25: gpiob.pb12,
+            pin_26: gpiob.pb13,
+            pin_27: gpiob.pb14,
+            pin_28: gpiob.pb15,
+            pin_29: gpioa.pa8,
+            pin_30: gpioa.pa9,
+            pin_31: gpioa.pa10,
+            pin_32: gpioa.pa11,
+            pin_33: gpioa.pa12,
+            pin_38: gpioa.pa15,
+            pin_39: gpiob.pb3,
+            pin_40: gpiob.pb4,
+            pin_41: gpiob.pb5,
+            pin_42: gpiob.pb6,
+            pin_43: gpiob.pb7,
+            pin_45: gpiob.pb8,
+            pin_46: gpiob.pb9,
+            i2c1: p.I2C1,
+        };
+
+        let constraints = PlatformConstraints {
+            afio,
+            gpioa_crl: gpioa.crl,
+            gpioa_crh: gpioa.crh,
+            gpiob_crl: gpiob.crl,
+            gpiob_crh: gpiob.crh,
+            gpioc_crl: gpioc.crl,
+            gpioc_crh: gpioc.crh,
+            flash,
+            clocks,
+        };
+
+        PlatformBuilder {
+            platform,
+            constraints,
+            module_peripherals,
+        }
+    }
 }
