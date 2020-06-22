@@ -1,5 +1,5 @@
 use crate::ds93c46::DS93C46;
-use crate::HandleError;
+use crate::platform::HandleError;
 use core::convert::Infallible;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::v2::OutputPin;

@@ -1,8 +1,10 @@
 use crate::cnf::NetworkConfiguration;
 use crate::ds93c46::DS93C46;
-use crate::io_utils::OutputPinInfallible;
-use crate::module::{ModulePeripherals, PlatformConstraints, RequestHandler};
-use crate::{HandleError, System};
+use crate::io_utils::{InputPinInfallible, OutputPinInfallible, ToggleableOutputPinInfallible};
+use crate::module::{
+    Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
+};
+use crate::system::System;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 use core::convert::Infallible;
@@ -16,6 +18,7 @@ use onewire;
 use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
 use onewire::{Device, OneWire};
+use panic_persist::get_panic_message_bytes;
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
@@ -64,14 +67,16 @@ pub struct Platform {
     pub(super) system: System,
 
     /// UserInput to restart the board
-    pub(super) board_reset: PB11<Output<PushPull>>,
+    /// # WARNING
+    /// PB11<Output<PushPull>> prevents proper resets. like through [`cortex_m::peripheral::SCB::sys_reset()`]
+    pub(super) board_reset: PB11<Output<OpenDrain>>,
 
     /// W5500 interrupt pin
     #[allow(unused)]
     pub(super) w5500_intr: PB10<Input<Floating>>,
     pub(super) w5500: W5500<PB1<Output<PushPull>>>,
 
-    /// ChipSelect for the EEPROM
+    /// EEPROM for configuration
     pub(super) ds93c46: DS93C46<PB0<Output<PushPull>>>,
 
     pub(super) spi: Spi<
@@ -87,9 +92,9 @@ pub struct Platform {
     /// Low-Active pin to restart the W5500
     pub(super) w5500_reset: PA4<Output<PushPull>>,
 
-    pub(super) led_blue: PA3<Output<PushPull>>,
-    pub(super) led_yellow: PA2<Output<PushPull>>,
-    pub(super) led_red: PA1<Output<PushPull>>,
+    pub(super) led_blue_handle_udp: PA3<Output<PushPull>>,
+    pub(super) led_yellow_boot_warning: PA2<Output<PushPull>>,
+    pub(super) led_red_tmp_error: PA1<Output<PushPull>>,
 
     /// UserInput to reset the configuration to flash-default
     pub(super) factory_reset: PA0<Output<OpenDrain>>,
@@ -98,6 +103,9 @@ pub struct Platform {
 
     pub(super) network_udp: Option<UdpSocket>,
     pub(super) network_config: NetworkConfiguration,
+
+    error_dump: Option<&'static [u8]>,
+    last_error_at_uptime_ms: Option<u64>,
 }
 
 impl Platform {
@@ -119,6 +127,12 @@ impl Platform {
     }
 
     pub fn init_network(&mut self) -> Result<(), TransferError<SpiError, W5500CsError>> {
+        // reset the network chip (timings are really generous)
+        self.w5500_reset.set_low_infallible();
+        self.system.delay.delay_ms(250_u16); // Datasheet 5.5.1 says 500_us to 1_ms (?)
+        self.w5500_reset.set_high_infallible();
+        self.system.delay.delay_ms(25_u16); // Datasheet says read RDY pin, the network chip needs some time to boot!
+
         let mut active = self.w5500.activate(&mut self.spi)?;
         let active = &mut active;
 
@@ -141,8 +155,34 @@ impl Platform {
         Ok(())
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, module: &mut impl Module) {
+        // do all the internal updates
         self.system.info.update_uptime_offset();
+        self.check_factory_reset_flag();
+        module.update(self);
+
+        // check for external events
+        if self.handle_udp_request(&mut [0u8; 2048], module).is_err() {
+            self.log_error();
+        }
+
+        // display results
+        let uptime_ms = self.system.info.uptime_ms();
+        if let Some(err) = self.last_error_at_uptime_ms {
+            if uptime_ms.saturating_sub(err) >= 1_000 {
+                self.led_red_tmp_error.set_low_infallible();
+            }
+        }
+    }
+
+    pub fn log_error(&mut self) {
+        let uptime = self.system.info.uptime_ms();
+        self.last_error_at_uptime_ms = Some(uptime);
+        self.led_red_tmp_error.set_high_infallible();
+    }
+
+    pub fn log_boot_warning(&mut self) {
+        self.led_yellow_boot_warning.set_high_infallible();
     }
 
     pub fn init_onewire(&mut self) -> Result<(), onewire::Error<Infallible>> {
@@ -154,8 +194,18 @@ impl Platform {
         buffer: &mut [u8],
         module: &mut impl RequestHandler,
     ) -> Result<(), HandleError> {
+        self.led_blue_handle_udp.set_high_infallible();
+        let result = self.handle_udp_request_internal(buffer, module);
+        self.led_blue_handle_udp.set_low_infallible();
+        result
+    }
+
+    fn handle_udp_request_internal(
+        &mut self,
+        buffer: &mut [u8],
+        module: &mut impl RequestHandler,
+    ) -> Result<(), HandleError> {
         if let Some((ip, port, size)) = self.receive_udp(buffer)? {
-            self.led_red.set_high_infallible();
             let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
             let writer = &mut &mut *response_buffer;
             let available = writer.available();
@@ -171,9 +221,6 @@ impl Platform {
                 let (_request_header_buffer, request_content_buffer) =
                     whole_request_buffer.split_at_mut(request_length);
 
-                self.led_blue.set_low_infallible();
-                self.led_yellow.set_low_infallible();
-
                 let action =
                     self.try_handle_request(request, &mut &*request_content_buffer, writer, module);
 
@@ -183,7 +230,6 @@ impl Platform {
             let reset = match action {
                 Ok(Action::SendResponse) => {
                     self.send_udp(&ip, port, &response_buffer[..response_size])?;
-                    self.led_yellow.set_high_infallible();
                     false
                 }
                 Ok(Action::SendResponseAndReset) => {
@@ -299,6 +345,18 @@ impl Platform {
                 )?;
                 Response::Ok(id, Format::Empty).write(response_writer)?;
                 Ok(Action::SendResponseAndReset)
+            }
+            Request::RetrieveErrorDump(id) => {
+                if let Some(msg) = &self.error_dump {
+                    let len_truncated = msg.len().min(u8::MAX as usize) as u8;
+                    Response::Ok(id, Format::ValueOnly(Type::String(len_truncated)))
+                        .write(response_writer)?;
+                    let len_send = msg.len().min(response_writer.available());
+                    response_writer.write_all(&msg[..len_send])?;
+                } else {
+                    Response::NotAvailable(id).write(response_writer)?;
+                }
+                Ok(Action::SendResponse)
             }
             Request::RetrieveDeviceInformation(id) => {
                 let mut buffer = [0u8; 4 + 8 + 6 + 1];
@@ -442,8 +500,29 @@ impl Platform {
         Ok(())
     }
 
+    pub fn check_factory_reset_flag(&mut self) {
+        let probe_start = self.system.timer.now();
+        while self.factory_reset.is_high_infallible() {
+            // pressed for longer than 3s?
+            if (probe_start.elapsed() / self.system.timer.frequency().0) > 3 {
+                self.network_config = NetworkConfiguration::default();
+                let _ = self.save_network_configuration();
+                while self.factory_reset.is_high_infallible() {
+                    // turn on all debug LEDs and hold until no longer pressed
+                    self.led_blue_handle_udp.set_high_infallible();
+                    self.led_yellow_boot_warning.set_high_infallible();
+                    self.led_red_tmp_error.set_high_infallible();
+                }
+                self.reset();
+            }
+        }
+    }
+
     pub fn reset(&mut self) {
-        self.board_reset.set_low_infallible()
+        loop {
+            self.board_reset.set_low_infallible();
+            cortex_m::peripheral::SCB::sys_reset();
+        }
     }
 }
 
@@ -526,6 +605,10 @@ pub enum Action {
     HandleRequest(Request),
 }
 
+pub fn unwrap_builder() -> PlatformBuilder {
+    PlatformBuilder::take_peripherals().unwrap()
+}
+
 pub struct PlatformBuilder {
     platform: Platform,
     constraints: PlatformConstraints,
@@ -540,19 +623,61 @@ impl PlatformBuilder {
     /// [`Module`]: crate::module::Module
     /// [`cp::take()`]: cortex_m::Peripherals::take()
     /// [`p::take()`]: stm32f1xx_hal::pac::Peripherals::take()
-    pub fn take() -> Option<Self> {
+    pub fn take_peripherals() -> Option<Self> {
         let cp = cortex_m::Peripherals::take()?;
         let p = stm32f1xx_hal::pac::Peripherals::take()?;
-        Some(PlatformBuilder::from((cp, p)))
+        Some(PlatformBuilder::from((cp, p, get_panic_message_bytes())))
     }
 
     pub fn split(self) -> (Platform, PlatformConstraints, ModulePeripherals) {
         (self.platform, self.constraints, self.module_peripherals)
     }
+
+    pub fn run_with_module<T: Module>(self) -> ! {
+        let (mut platform, mut constraints, module) = self.split();
+
+        // TODO error handling
+        if platform.load_network_configuration().is_err() {
+            platform.log_error();
+            platform.log_boot_warning();
+            for _ in 0..4 {
+                platform.system.delay.delay_ms(1000_u16);
+                platform.system.led_status.toggle_infallible();
+            }
+        }
+
+        let _ = platform.init_onewire(); // allowed to fail
+
+        if platform.init_network().is_err() {
+            platform.log_error();
+            platform.log_boot_warning();
+        }
+
+        let mut module = T::Builder::build(&mut platform, &mut constraints, module);
+
+        loop {
+            for _ in 0..100 {
+                platform.update(&mut module);
+            }
+            platform.system.led_status.toggle_infallible();
+        }
+    }
 }
 
-impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for PlatformBuilder {
-    fn from((mut cp, p): (cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)) -> Self {
+impl
+    From<(
+        cortex_m::Peripherals,
+        stm32f1xx_hal::pac::Peripherals,
+        Option<&'static [u8]>,
+    )> for PlatformBuilder
+{
+    fn from(
+        (mut cp, p, error_dump): (
+            cortex_m::Peripherals,
+            stm32f1xx_hal::pac::Peripherals,
+            Option<&'static [u8]>,
+        ),
+    ) -> Self {
         let mut flash = p.FLASH.constrain();
         let mut rcc = p.RCC.constrain();
         let mut afio = p.AFIO.constrain(&mut rcc.apb2);
@@ -594,11 +719,10 @@ impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for Platform
 
         let platform = Platform {
             board_reset: {
-                let mut self_reset = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
+                let mut self_reset = gpiob.pb11.into_open_drain_output(&mut gpiob.crh);
                 self_reset.set_high_infallible();
                 self_reset
             },
-
             w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
             w5500: {
                 let mut w5500_cs = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
@@ -630,9 +754,9 @@ impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for Platform
 
             w5500_reset,
 
-            led_red: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
-            led_yellow: gpioa.pa2.into_push_pull_output(&mut gpioa.crl),
-            led_blue: gpioa.pa3.into_push_pull_output(&mut gpioa.crl),
+            led_red_tmp_error: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
+            led_yellow_boot_warning: gpioa.pa2.into_push_pull_output(&mut gpioa.crl),
+            led_blue_handle_udp: gpioa.pa3.into_push_pull_output(&mut gpioa.crl),
 
             factory_reset: gpioa.pa0.into_open_drain_output(&mut gpioa.crl),
 
@@ -640,6 +764,9 @@ impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for Platform
 
             network_config: NetworkConfiguration::default(),
             network_udp: None,
+
+            error_dump,
+            last_error_at_uptime_ms: None,
 
             system: {
                 let timer = {
@@ -695,5 +822,53 @@ impl From<(cortex_m::Peripherals, stm32f1xx_hal::pac::Peripherals)> for Platform
             constraints,
             module_peripherals,
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum HandleError {
+    Unknown,
+    Spi(spi::Error),
+    Parsing(sensor_common::Error),
+    OneWire(onewire::Error<Infallible>),
+    NotMagicCrcAtStart,
+    CrcError,
+    I2c(NbError<I2cError>),
+    NetworkError(TransferError<spi::Error, Infallible>),
+}
+
+impl From<TransferError<spi::Error, Infallible>> for HandleError {
+    fn from(e: TransferError<spi::Error, Infallible>) -> Self {
+        HandleError::NetworkError(e)
+    }
+}
+
+impl From<spi::Error> for HandleError {
+    fn from(e: spi::Error) -> Self {
+        HandleError::Spi(e)
+    }
+}
+
+impl From<sensor_common::Error> for HandleError {
+    fn from(e: sensor_common::Error) -> Self {
+        HandleError::Parsing(e)
+    }
+}
+
+impl From<onewire::Error<Infallible>> for HandleError {
+    fn from(e: onewire::Error<Infallible>) -> Self {
+        HandleError::OneWire(e)
+    }
+}
+
+impl From<()> for HandleError {
+    fn from(_: ()) -> Self {
+        HandleError::Unknown
+    }
+}
+
+impl From<NbError<I2cError>> for HandleError {
+    fn from(e: NbError<I2cError>) -> Self {
+        HandleError::I2c(e)
     }
 }

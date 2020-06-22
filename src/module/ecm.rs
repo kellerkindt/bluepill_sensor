@@ -1,7 +1,9 @@
 use crate::io_utils::InputPinInfallible;
-use crate::module::{Module, RequestHandler};
+use crate::module::{
+    Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
+};
+use crate::platform::HandleError;
 use crate::platform::{Action, Platform};
-use crate::HandleError;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
 use sensor_common::Bus;
@@ -16,6 +18,40 @@ use stm32f1xx_hal::gpio::gpiob::PB3;
 use stm32f1xx_hal::gpio::gpiob::PB4;
 use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::gpio::{Floating, PullUp};
+
+pub struct ECMBuilder;
+
+impl ModuleBuilder<ElectricCounterModule> for ECMBuilder {
+    fn build(
+        _platform: &mut Platform,
+        constraints: &mut PlatformConstraints,
+        peripherals: ModulePeripherals,
+    ) -> ElectricCounterModule {
+        let (pa15, pb3, pb4) = constraints.afio.mapr.disable_jtag(
+            peripherals.pin_38,
+            peripherals.pin_39,
+            peripherals.pin_40,
+        );
+
+        ElectricCounterModule {
+            pa8: peripherals
+                .pin_29
+                .into_pull_up_input(&mut constraints.gpioa_crh),
+            pa12: peripherals
+                .pin_33
+                .into_floating_input(&mut constraints.gpioa_crh),
+            pa15: pa15.into_floating_input(&mut constraints.gpioa_crh),
+            pb3: pb3.into_floating_input(&mut constraints.gpiob_crl),
+            pb4: pb4.into_floating_input(&mut constraints.gpiob_crl),
+
+            garage_open_since: None,
+            ltfm1: LongTimeFreqMeasurement::new(),
+            ltfm2: LongTimeFreqMeasurement::new(),
+            ltfm3: LongTimeFreqMeasurement::new(),
+            ltfm4: LongTimeFreqMeasurement::new(),
+        }
+    }
+}
 
 pub struct ElectricCounterModule {
     pub pa8: PA8<Input<PullUp>>,
@@ -32,6 +68,8 @@ pub struct ElectricCounterModule {
 }
 
 impl Module for ElectricCounterModule {
+    type Builder = ECMBuilder;
+
     fn update(&mut self, platform: &mut Platform) {
         let time_us = platform.system.info.uptime_us();
         self.ltfm1.update(time_us, self.pa12.is_high_infallible());

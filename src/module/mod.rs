@@ -1,8 +1,8 @@
 pub mod ecm;
 
+use crate::platform::Action;
+use crate::platform::HandleError;
 use crate::platform::Platform;
-use crate::Action;
-use crate::HandleError;
 use core::convert::Infallible;
 use sensor_common::Read;
 use sensor_common::Request;
@@ -35,15 +35,18 @@ impl RequestHandler for Infallible {
     }
 }
 
-pub trait Module {
-    fn update(&mut self, platform: &mut Platform);
+pub trait ModuleBuilder<M: Module<Builder = Self>>: Sized {
+    fn build(
+        platform: &mut Platform,
+        constraints: &mut PlatformConstraints,
+        peripherals: ModulePeripherals,
+    ) -> M;
 }
 
-pub trait ModuleBuilder {
-    type Target: Module;
+pub trait Module: RequestHandler + Sized {
+    type Builder: ModuleBuilder<Self>;
 
-    fn build(peripherals: ModulePeripherals, constraints: &mut PlatformConstraints)
-        -> Self::Target;
+    fn update(&mut self, platform: &mut Platform);
 }
 
 /// TODO not stacking compatible yet (Options for the pins might be possible, but introduces runtime checks + failures, sharing buses requires (async) Mutex?)

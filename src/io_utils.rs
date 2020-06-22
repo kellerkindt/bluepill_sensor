@@ -1,6 +1,16 @@
 use core::convert::Infallible;
-use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{InputPin, ToggleableOutputPin};
+
+pub trait ToggleableOutputPinInfallible {
+    fn toggle_infallible(&mut self);
+}
+
+impl<T: ToggleableOutputPin<Error = Infallible>> ToggleableOutputPinInfallible for T {
+    fn toggle_infallible(&mut self) {
+        self.toggle().unwrap()
+    }
+}
 
 pub trait OutputPinInfallible {
     fn set_low_infallible(&mut self);

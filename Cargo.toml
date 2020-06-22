@@ -1,6 +1,6 @@
 [package]
 name = "bluepill_sensor"
-version = "0.3.9"
+version = "0.3.10"
 authors = ["Michael Watzko <michael@watzko.de>"]
 description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
@@ -8,6 +8,14 @@ categories = ["embedded", "no-std"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/kellerkindt/bluepill_sensor"
 edition = "2018"
+
+[lib]
+name = "bluepill_sensor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bluepill_sensor"
+path = "src/main.rs"
 
 [profile.dev]
 codegen-units = 1
@@ -21,14 +29,14 @@ debug = false
 embedded-hal = "0.2.3"
 byteorder = { version = "1.2.1", default-features = false }
 nb = "0.1.2"
-panic-halt = "0.2.0"
-cortex-m-rt = "0.6.7"
+panic-persist = "0.2.1"
+cortex-m-rt = "0.6.12"
 void = {version = "1.0.2", default-features = false }
 ads1x1x = "0.2.0"
 cortex-m = "0.6.2"
 
 [dependencies.stm32f1xx-hal]
-version = "0.5.3"
+version = "0.6.0"
 features = ["stm32f103"]
 
 # [dependencies.shared-bus]
