@@ -1,7 +1,7 @@
-#[cfg(feature = "em")]
+#[cfg(feature = "module-em")]
 pub mod em;
 
-#[cfg(feature = "em")]
+#[cfg(feature = "module-em")]
 pub use em::ElectricityMeter as FeaturedModule;
 
 #[cfg(not(feature = "module-specified"))]
