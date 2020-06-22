@@ -24,5 +24,5 @@ mod cnf;
 
 #[entry]
 fn main() -> ! {
-    platform::unwrap_builder().run_with_module::<crate::module::ecm::ElectricCounterModule>()
+    platform::unwrap_builder().run_with_module::<crate::module::FeaturedModule>()
 }

@@ -59,3 +59,7 @@ path = "../sensor_common"
 # [dependencies.stm32f103xx-hal]
 # git = "https://github.com/japaric/stm32f103xx-hal.git"
 # rev = "da4de59"
+
+[features]
+default = ["ecc"]
+ecc = []
