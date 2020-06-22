@@ -21,19 +21,19 @@ use stm32f1xx_hal::gpio::{Floating, PullUp};
 
 pub struct ECMBuilder;
 
-impl ModuleBuilder<ElectricCounterModule> for ECMBuilder {
+impl ModuleBuilder<ElectricityMeter> for ECMBuilder {
     fn build(
         _platform: &mut Platform,
         constraints: &mut PlatformConstraints,
         peripherals: ModulePeripherals,
-    ) -> ElectricCounterModule {
+    ) -> ElectricityMeter {
         let (pa15, pb3, pb4) = constraints.afio.mapr.disable_jtag(
             peripherals.pin_38,
             peripherals.pin_39,
             peripherals.pin_40,
         );
 
-        ElectricCounterModule {
+        ElectricityMeter {
             pa8: peripherals
                 .pin_29
                 .into_pull_up_input(&mut constraints.gpioa_crh),
@@ -53,7 +53,7 @@ impl ModuleBuilder<ElectricCounterModule> for ECMBuilder {
     }
 }
 
-pub struct ElectricCounterModule {
+pub struct ElectricityMeter {
     pub pa8: PA8<Input<PullUp>>,
     pub pa12: PA12<Input<Floating>>,
     pub pa15: PA15<Input<Floating>>,
@@ -67,7 +67,7 @@ pub struct ElectricCounterModule {
     pub ltfm4: LongTimeFreqMeasurement,
 }
 
-impl Module for ElectricCounterModule {
+impl Module for ElectricityMeter {
     type Builder = ECMBuilder;
 
     fn update(&mut self, platform: &mut Platform) {
@@ -87,7 +87,7 @@ impl Module for ElectricCounterModule {
     }
 }
 
-impl RequestHandler for ElectricCounterModule {
+impl RequestHandler for ElectricityMeter {
     fn try_handle_request(
         &mut self,
         platform: &mut Platform,

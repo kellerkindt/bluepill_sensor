@@ -1,8 +1,8 @@
-#[cfg(feature = "ecc")]
-pub mod ecm;
+#[cfg(feature = "em")]
+pub mod em;
 
-#[cfg(feature = "ecc")]
-pub use ecm::ElectricCounterModule as FeaturedModule;
+#[cfg(feature = "em")]
+pub use em::ElectricityMeter as FeaturedModule;
 
 #[cfg(not(feature = "module-specified"))]
 pub mod nop;
