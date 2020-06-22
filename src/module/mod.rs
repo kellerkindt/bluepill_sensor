@@ -4,6 +4,12 @@ pub mod ecm;
 #[cfg(feature = "ecc")]
 pub use ecm::ElectricCounterModule as FeaturedModule;
 
+#[cfg(not(feature = "module-specified"))]
+pub mod nop;
+
+#[cfg(not(feature = "module-specified"))]
+pub use nop::NopModule as FeaturedModule;
+
 use crate::platform::Action;
 use crate::platform::HandleError;
 use crate::platform::Platform;

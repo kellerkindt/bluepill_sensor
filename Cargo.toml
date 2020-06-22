@@ -1,6 +1,6 @@
 [package]
 name = "bluepill_sensor"
-version = "0.3.10"
+version = "0.3.11"
 authors = ["Michael Watzko <michael@watzko.de>"]
 description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
@@ -62,4 +62,5 @@ path = "../sensor_common"
 
 [features]
 default = []
-ecc = []
+ecc = ["module-specified"]
+module-specified = []

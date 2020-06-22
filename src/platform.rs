@@ -1,9 +1,7 @@
 use crate::cnf::NetworkConfiguration;
 use crate::ds93c46::DS93C46;
 use crate::io_utils::{InputPinInfallible, OutputPinInfallible, ToggleableOutputPinInfallible};
-use crate::module::{
-    Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
-};
+use crate::module::{Module, ModuleBuilder, ModulePeripherals, PlatformConstraints};
 use crate::system::System;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
@@ -192,7 +190,7 @@ impl Platform {
     pub fn handle_udp_request(
         &mut self,
         buffer: &mut [u8],
-        module: &mut impl RequestHandler,
+        module: &mut impl Module,
     ) -> Result<(), HandleError> {
         self.led_blue_handle_udp.set_high_infallible();
         let result = self.handle_udp_request_internal(buffer, module);
@@ -203,7 +201,7 @@ impl Platform {
     fn handle_udp_request_internal(
         &mut self,
         buffer: &mut [u8],
-        module: &mut impl RequestHandler,
+        module: &mut impl Module,
     ) -> Result<(), HandleError> {
         if let Some((ip, port, size)) = self.receive_udp(buffer)? {
             let (whole_request_buffer, response_buffer) = buffer.split_at_mut(size);
@@ -290,12 +288,12 @@ impl Platform {
         (&mut active, socket).blocking_send(host, port, data)
     }
 
-    pub fn try_handle_request(
+    pub fn try_handle_request<M: Module>(
         &mut self,
         request: Request,
         request_payload: &mut impl sensor_common::Read,
         response_writer: &mut impl sensor_common::Write,
-        module: &mut impl RequestHandler,
+        module: &mut M,
     ) -> Result<Action, HandleError> {
         match request {
             Request::DiscoverAll(id) | Request::DiscoverAllOnBus(id, Bus::OneWire) => {
@@ -359,9 +357,13 @@ impl Platform {
                 Ok(Action::SendResponse)
             }
             Request::RetrieveDeviceInformation(id) => {
-                let mut buffer = [0u8; 4 + 8 + 6 + 1];
-                Response::Ok(id, Format::ValueOnly(Type::Bytes(buffer.len() as u8)))
-                    .write(response_writer)?;
+                let name = core::any::type_name::<M>().as_bytes();
+                let mut buffer = [0u8; 4 + 8 + 6 + 1 + 1];
+                Response::Ok(
+                    id,
+                    Format::ValueOnly(Type::Bytes((buffer.len() + name.len()) as u8)),
+                )
+                .write(response_writer)?;
                 NetworkEndian::write_u32(&mut buffer[0..], self.system.info.frequency().0);
                 NetworkEndian::write_u64(&mut buffer[4..], self.system.info.uptime());
 
@@ -371,8 +373,10 @@ impl Platform {
                 buffer[16] = self.system.info.cpu_revision();
                 buffer[17] = crate::cnf::MAGIC_EEPROM_CRC_START;
                 buffer[18] = 0x00;
+                buffer[19] = name.len().min(usize::from(u8::MAX) - buffer.len()) as u8;
 
                 response_writer.write_all(&buffer)?;
+                response_writer.write_all(&name[..buffer[19] as usize])?;
                 Ok(Action::SendResponse)
             }
             Request::RetrieveNetworkConfiguration(id) => {
@@ -565,6 +569,7 @@ impl DeviceInformation {
         self.uptime() / (self.frequency.0 / 1_000) as u64
     }
 
+    #[allow(unused)]
     pub fn uptime_us(&self) -> u64 {
         self.uptime() / (self.frequency.0 / 1_000_000) as u64
     }
