@@ -11,6 +11,7 @@ use embedded_hal::blocking::i2c::Read;
 use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::spi::{Mode, Phase, Polarity};
+use embedded_hal::watchdog::{Watchdog, WatchdogEnable};
 use nb::Error as NbError;
 use onewire;
 use onewire::Sensor as OneWireSensor;
@@ -47,6 +48,7 @@ use stm32f1xx_hal::spi::Spi1NoRemap;
 use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
 use stm32f1xx_hal::time::{Hertz, U32Ext};
+use stm32f1xx_hal::watchdog::IndependentWatchdog;
 use w5500::*;
 
 pub const SOCKET_UDP: Socket = Socket::Socket0;
@@ -58,6 +60,7 @@ pub type W5500CsError = Infallible;
 /// Everything directly build onto the bluepill sensor board
 pub struct Platform {
     pub(super) system: System,
+    pub(super) watchdog: IndependentWatchdog,
 
     /// UserInput to restart the board
     /// # WARNING
@@ -128,8 +131,17 @@ pub struct Platform {
     pub(super) network_udp: Option<UdpSocket>,
     pub(super) network_config: NetworkConfiguration,
 
+    /// Error dump/panic of previous instance
     error_dump: Option<&'static [u8]>,
+
+    /// The time the last error was raised
     last_error_at_uptime_ms: Option<u64>,
+
+    /// Current errors at this moment
+    errors: ErrorFlags,
+
+    /// All errors that ever occurred while running, do not reset
+    error_history: ErrorFlags,
 }
 
 impl Platform {
@@ -155,25 +167,33 @@ impl Platform {
         self.w5500_reset.set_low_infallible();
         self.system.delay.delay_ms(250_u16); // Datasheet 5.5.1 says 500_us to 1_ms (?)
         self.w5500_reset.set_high_infallible();
-        self.system.delay.delay_ms(25_u16); // Datasheet says read RDY pin, the network chip needs some time to boot!
+        self.system.delay.delay_ms(250_u16); // Datasheet says read RDY pin, the network chip needs some time to boot!
 
         let mut active = self.w5500.activate(&mut self.spi)?;
         let active = &mut active;
+
+        // reset taken socket
+        self.network_udp = None;
+
+        // SAFETY: safe because take UDP socket is erased
+        unsafe {
+            active.reset()?;
+        }
+
+        self.system.delay.delay_ms(100_u16);
 
         active.set_mac(self.network_config.mac)?;
         active.set_ip(self.network_config.ip)?;
         active.set_subnet(self.network_config.subnet)?;
         active.set_gateway(self.network_config.gateway)?;
 
-        self.system.delay.delay_ms(10_u16);
+        self.system.delay.delay_ms(100_u16);
 
-        if self.network_udp.is_none() {
-            if let Some(uninitialized) = active.take_socket(SOCKET_UDP) {
-                // TODO lost on ERROR
-                self.network_udp = (active, uninitialized)
-                    .try_into_udp_server_socket(SOCKET_UDP_PORT)
-                    .ok();
-            }
+        if let Some(uninitialized) = active.take_socket(SOCKET_UDP) {
+            // TODO lost on ERROR
+            self.network_udp = (active, uninitialized)
+                .try_into_udp_server_socket(SOCKET_UDP_PORT)
+                .ok();
         }
 
         Ok(())
@@ -187,7 +207,13 @@ impl Platform {
 
         // check for external events
         if self.handle_udp_request(&mut [0u8; 2048], module).is_err() {
-            self.log_error();
+            self.log_error(ErrorFlags::NETWORK_UDP);
+        } else if self.clear_error(ErrorFlags::NETWORK_UDP) {
+            if self.init_network().is_ok() {
+                self.clear_error(ErrorFlags::NETWORK_INIT);
+            } else {
+                self.log_error(ErrorFlags::NETWORK_INIT);
+            }
         }
 
         // display results
@@ -202,11 +228,19 @@ impl Platform {
         }
     }
 
-    pub fn log_error(&mut self) {
+    pub fn log_error(&mut self, flags: ErrorFlags) {
         let uptime = self.system.info.uptime_ms();
         self.last_error_at_uptime_ms = Some(uptime);
+        self.errors |= flags;
+        self.error_history |= flags;
         #[cfg(any(not(feature = "i2c2"), not(feature = "rtc")))]
         self.led_red_tmp_error.set_high_infallible();
+    }
+
+    pub fn clear_error(&mut self, flags: ErrorFlags) -> bool {
+        let has_resolved_some = self.errors & flags != ErrorFlags::empty();
+        self.errors.remove(flags);
+        has_resolved_some
     }
 
     pub fn log_boot_warning(&mut self) {
@@ -679,7 +713,7 @@ impl PlatformBuilder {
 
         // TODO error handling
         if platform.load_network_configuration().is_err() {
-            platform.log_error();
+            platform.log_error(ErrorFlags::NETWORK_LOAD);
             platform.log_boot_warning();
             for _ in 0..4 {
                 platform.system.delay.delay_ms(1000_u16);
@@ -690,15 +724,18 @@ impl PlatformBuilder {
         let _ = platform.init_onewire(); // allowed to fail
 
         if platform.init_network().is_err() {
-            platform.log_error();
+            platform.log_error(ErrorFlags::NETWORK_INIT);
             platform.log_boot_warning();
         }
 
         let mut module = T::Builder::build(&mut platform, &mut constraints, module);
 
+        platform.watchdog.start(5_000.ms());
+
         loop {
             for _ in 0..100 {
                 platform.update(&mut module);
+                platform.watchdog.feed();
             }
             platform.system.led_status.toggle_infallible();
         }
@@ -853,7 +890,10 @@ impl
 
             error_dump,
             last_error_at_uptime_ms: None,
+            errors: ErrorFlags::empty(),
+            error_history: ErrorFlags::empty(),
 
+            watchdog: IndependentWatchdog::new(p.IWDG),
             system: {
                 let timer = {
                     cp.DCB.enable_trace();
@@ -956,5 +996,13 @@ impl From<()> for HandleError {
 impl From<NbError<I2cError>> for HandleError {
     fn from(e: NbError<I2cError>) -> Self {
         HandleError::I2c(e)
+    }
+}
+
+bitflags::bitflags! {
+    pub struct ErrorFlags: u8 {
+        const NETWORK_LOAD = 0b0000_0001;
+        const NETWORK_INIT = 0b0000_0010;
+        const NETWORK_UDP = 0b0000_0100;
     }
 }

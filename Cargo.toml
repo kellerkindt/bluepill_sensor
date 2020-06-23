@@ -1,6 +1,6 @@
 [package]
 name = "bluepill_sensor"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Michael Watzko <michael@watzko.de>"]
 description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
@@ -34,6 +34,7 @@ cortex-m-rt = "0.6.12"
 void = {version = "1.0.2", default-features = false }
 ads1x1x = "0.2.0"
 cortex-m = "0.6.2"
+bitflags = "1.2.1"
 
 [dependencies.stm32f1xx-hal]
 version = "0.6.0"
