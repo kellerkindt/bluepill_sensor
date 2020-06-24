@@ -60,7 +60,6 @@ pub type W5500CsError = Infallible;
 /// Everything directly build onto the bluepill sensor board
 pub struct Platform {
     pub(super) system: System,
-    pub(super) watchdog: IndependentWatchdog,
 
     /// UserInput to restart the board
     /// # WARNING
@@ -730,12 +729,12 @@ impl PlatformBuilder {
 
         let mut module = T::Builder::build(&mut platform, &mut constraints, module);
 
-        platform.watchdog.start(5_000.ms());
+        platform.system.watchdog.start(5_000.ms());
 
         loop {
             for _ in 0..100 {
                 platform.update(&mut module);
-                platform.watchdog.feed();
+                platform.system.watchdog.feed();
             }
             platform.system.led_status.toggle_infallible();
         }
@@ -893,7 +892,6 @@ impl
             errors: ErrorFlags::empty(),
             error_history: ErrorFlags::empty(),
 
-            watchdog: IndependentWatchdog::new(p.IWDG),
             system: {
                 let timer = {
                     cp.DCB.enable_trace();
@@ -902,6 +900,7 @@ impl
 
                 System {
                     info: DeviceInformation::new(&timer, cp.CPUID.base.read()),
+                    watchdog: IndependentWatchdog::new(p.IWDG),
                     delay,
                     timer,
                     led_status: gpioc.pc13.into_push_pull_output(&mut gpioc.crh),
