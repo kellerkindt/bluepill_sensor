@@ -4,6 +4,12 @@ pub mod em;
 #[cfg(feature = "module-em")]
 pub use em::ElectricityMeter as FeaturedModule;
 
+#[cfg(feature = "module-ps")]
+pub mod ps;
+
+#[cfg(feature = "module-ps")]
+pub use ps::PumpingSystem as FeaturedModule;
+
 #[cfg(not(feature = "module-specified"))]
 pub mod nop;
 
@@ -20,7 +26,7 @@ use sensor_common::Write;
 use stm32f1xx_hal::gpio::gpioa::*;
 use stm32f1xx_hal::gpio::gpiob::*;
 use stm32f1xx_hal::gpio::{Debugger, Floating, Input};
-use stm32f1xx_hal::rcc::Clocks;
+use stm32f1xx_hal::rcc::{Clocks, APB1, APB2};
 use stm32f1xx_hal::{afio, flash};
 
 pub trait RequestHandler {
@@ -87,6 +93,8 @@ pub struct PlatformConstraints {
     pub flash: flash::Parts,
     pub clocks: Clocks,
     pub afio: afio::Parts,
+    pub apb1: APB1,
+    pub apb2: APB2,
     pub gpioa_crl: stm32f1xx_hal::gpio::gpioa::CRL,
     pub gpioa_crh: stm32f1xx_hal::gpio::gpioa::CRH,
     pub gpiob_crl: stm32f1xx_hal::gpio::gpiob::CRL,

@@ -932,6 +932,8 @@ impl
 
         let constraints = PlatformConstraints {
             afio,
+            apb1: rcc.apb1,
+            apb2: rcc.apb2,
             gpioa_crl: gpioa.crl,
             gpioa_crh: gpioa.crh,
             gpiob_crl: gpiob.crl,
