@@ -48,6 +48,8 @@ mod expander {
 const ALERT_TIMEOUT: u64 = 1_000 * 60;
 const ALERT_MISSING_PUMP_AFTER_MS: u64 = 1_000 * 60 * 60 * 12;
 const MIN_UPTIME_BEFORE_PANIC_MS: u64 = 1_000 * 10;
+const IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS: u64 = 1_000 * 60 * 2;
+const IRREGULAR_HIGH_PUMP_BURSTS_ALERT_AT_COUNTER_VALUE: u8 = 10;
 
 pub struct PSBuilder;
 
@@ -80,7 +82,6 @@ impl ModuleBuilder<PumpingSystem> for PSBuilder {
             pump_state: PumpState::new(platform.system.info.uptime_ms()),
             alert_active_since_timestamp_ms: None,
             irregular_high_pump_burst_counter: None,
-            state: false,
             pump_state_timestamp: OnOffTimestamp::Off(platform.system.info.uptime_ms()),
         }
     }
@@ -118,7 +119,6 @@ pub struct PumpingSystem {
     pump_state: PumpState,
     alert_active_since_timestamp_ms: Option<u64>,
     irregular_high_pump_burst_counter: Option<(u64, u8)>,
-    state: bool,
     pump_state_timestamp: OnOffTimestamp,
 }
 
@@ -169,10 +169,10 @@ impl PumpingSystem {
 
     pub fn watch_irregular_high_pump_bursts(&mut self, timestamp_ms: u64) {
         if let Some((since, counter)) = self.irregular_high_pump_burst_counter {
-            if timestamp_ms.saturating_sub(since) <= 1_000 * 60 {
+            if timestamp_ms.saturating_sub(since) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS {
                 self.irregular_high_pump_burst_counter =
                     Some((timestamp_ms, counter.saturating_add(1)));
-                if counter > 10 {
+                if counter >= IRREGULAR_HIGH_PUMP_BURSTS_ALERT_AT_COUNTER_VALUE {
                     self.raise_alert(timestamp_ms);
                 }
             } else {
@@ -229,7 +229,7 @@ impl Module for PumpingSystem {
 impl RequestHandler for PumpingSystem {
     fn try_handle_request(
         &mut self,
-        _platform: &mut Platform,
+        platform: &mut Platform,
         request: Request,
         _request_payload: &mut impl Read,
         response_writer: &mut impl Write,
@@ -257,6 +257,7 @@ impl RequestHandler for PumpingSystem {
                 }
                 Ok(Action::SendResponse)
             }
+            /*
             Request::ReadSpecified(id, Bus::Custom(x)) if x >= 100 && x <= 108 => {
                 let mut pcf = pcf857x::Pcf8574a::new(
                     MutRef(&mut self.i2c),
@@ -274,7 +275,7 @@ impl RequestHandler for PumpingSystem {
                     Response::NotAvailable(id).write(response_writer)?;
                 }
                 Ok(Action::SendResponse)
-            }
+            }*/
             Request::ReadSpecified(id, Bus::Custom(200)) => {
                 use core::fmt::Write;
                 let mut buffer = ArrayString::<[u8; 129]>::new();
@@ -286,6 +287,64 @@ impl RequestHandler for PumpingSystem {
                 } else {
                     Response::NotAvailable(id).write(response_writer)?;
                 }
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(201)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let timestamp_ms = platform.system.info.uptime_ms();
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(
+                    &mut buffer[..],
+                    match self.pump_state_timestamp {
+                        OnOffTimestamp::Off(time) => timestamp_ms.saturating_sub(time) as f32,
+                        OnOffTimestamp::On(time) => {
+                            timestamp_ms.saturating_sub(time) as f32 * -1_f32
+                        }
+                    },
+                );
+                response_writer.write_all(&buffer[..])?;
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(202)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let timestamp_ms = platform.system.info.uptime_ms();
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(
+                    &mut buffer[..],
+                    self.alert_active_since_timestamp_ms
+                        .map(|t| timestamp_ms.saturating_sub(t))
+                        .unwrap_or(0) as f32,
+                );
+                response_writer.write_all(&buffer[..])?;
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(203)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let timestamp_ms = platform.system.info.uptime_ms();
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(
+                    &mut buffer[..],
+                    self.irregular_high_pump_burst_counter
+                        .map(|(t, _c)| timestamp_ms.saturating_sub(t))
+                        .unwrap_or(0) as f32,
+                );
+                response_writer.write_all(&buffer[..])?;
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(204)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let timestamp_ms = platform.system.info.uptime_ms();
+                let mut buffer = [0u8; 4];
+                NetworkEndian::write_f32(
+                    &mut buffer[..],
+                    self.irregular_high_pump_burst_counter
+                        .filter(|(t, _c)| {
+                            timestamp_ms.saturating_sub(*t) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS
+                        })
+                        .map(|(_t, c)| c)
+                        .unwrap_or(0) as f32,
+                );
+                response_writer.write_all(&buffer[..])?;
                 Ok(Action::SendResponse)
             }
             _ => Ok(Action::HandleRequest(request)),

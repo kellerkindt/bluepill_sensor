@@ -36,6 +36,7 @@ cortex-m = "0.6.2"
 bitflags = "1.2.1"
 ads1x1x = { version = "0.2.1", optional = true }
 pcf857x = { version = "0.3.0", optional = true }
+arrayvec = { version = "0.5.1", optional = true, default-features = false, features = ["array-sizes-129-255"] }
 
 [dependencies.stm32f1xx-hal]
 version = "0.6.0"
@@ -65,7 +66,7 @@ path = "../sensor_common"
 [features]
 default = ["board-rev-3-0"]
 module-em = ["module-specified"]
-module-ps = ["module-specified", "ads1x1x", "pcf857x"]
+module-ps = ["module-specified", "ads1x1x", "pcf857x", "arrayvec"]
 module-specified = []
 board-rev-2 = []
 board-rev-3-0 = ["i2c2"]
