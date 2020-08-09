@@ -368,22 +368,24 @@ enum PumpState {
         /// the timestamp since when the fill value doesn't change significantly
         level_since_ms: Option<u64>,
         pump_cycle: u8,
-        pre_failed: bool,
+        prev_pre_fails: u8,
     },
     Pumping {
         timestamp_ms: u64,
         low_fill_timestamp_ms: Option<u64>,
         pump_cycle: u8,
-        pre_failed: bool,
+        prev_pre_fails: u8,
     },
     Cooldown {
         timestamp_ms: u64,
         pump_cycle: u8,
-        pre_failed: bool,
+        prev_pre_fails: u8,
     },
     PreFail {
         /// the timestamp at which this state was initially entered
         timestamp_ms: u64,
+        /// previous pre fails
+        prev_pre_fails: u8,
     },
     Failure {
         /// the timestamp at which this state was initially entered
@@ -391,8 +393,9 @@ enum PumpState {
     },
 }
 
-const PUMP_CYCLES_BEFORE_PREFAIL: u8 = 5;
-const PUMP_PREFAIL_COOLDOWN_MS: u64 = 1_000 * 60 * 10;
+const PUMP_CYCLES_BEFORE_PREFAIL: u8 = 3;
+const PUMP_PREFAIL_COOLDOWN_INCREMENT_MS: u64 = 1_000 * 60 * 15;
+const PUMP_PREFAILS_BEFORE_FAILURE: u8 = 10;
 const PUMP_CRIT_THRESHOLD: f32 = 1.25_f32;
 const PUMP_HIGH_THRESHOLD: f32 = 0.95_f32;
 const PUMP_LOW_THRESHOLD: f32 = 0.2_f32;
@@ -409,7 +412,7 @@ impl PumpState {
         PumpState::Cooldown {
             timestamp_ms,
             pump_cycle: 0,
-            pre_failed: false,
+            prev_pre_fails: 0,
         }
     }
 
@@ -420,7 +423,7 @@ impl PumpState {
                 fill,
                 level_since_ms,
                 pump_cycle,
-                pre_failed,
+                prev_pre_fails: pre_fails,
             } => {
                 if current_fill >= *fill + PUMP_SIGNIFICANT_CHANGE {
                     *fill = current_fill;
@@ -437,7 +440,7 @@ impl PumpState {
                         timestamp_ms: current_timestamp_ms,
                         low_fill_timestamp_ms: None,
                         pump_cycle: pump_cycle.saturating_add(1),
-                        pre_failed: *pre_failed,
+                        prev_pre_fails: *pre_fails,
                     }
                 }
             }
@@ -445,7 +448,7 @@ impl PumpState {
                 timestamp_ms,
                 low_fill_timestamp_ms,
                 pump_cycle,
-                pre_failed,
+                prev_pre_fails,
             } => {
                 let nominal_pump_cycle_completed =
                     current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_NOMINAL_ON_TIME_MS;
@@ -457,7 +460,7 @@ impl PumpState {
                     *self = PumpState::Cooldown {
                         timestamp_ms: current_timestamp_ms,
                         pump_cycle: *pump_cycle,
-                        pre_failed: *pre_failed,
+                        prev_pre_fails: *prev_pre_fails,
                     }
                 } else if low_fill_timestamp_ms.is_none() && current_fill < PUMP_LOW_THRESHOLD {
                     *low_fill_timestamp_ms = Some(current_timestamp_ms);
@@ -466,18 +469,19 @@ impl PumpState {
             PumpState::Cooldown {
                 timestamp_ms,
                 pump_cycle,
-                pre_failed,
+                prev_pre_fails,
             } => {
                 if current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_COOLDOWN_MS {
                     if current_fill > PUMP_HIGH_THRESHOLD {
                         if *pump_cycle >= PUMP_CYCLES_BEFORE_PREFAIL {
-                            if *pre_failed {
+                            if *prev_pre_fails >= PUMP_PREFAILS_BEFORE_FAILURE {
                                 *self = PumpState::Failure {
                                     timestamp_ms: current_timestamp_ms,
                                 }
                             } else {
                                 *self = PumpState::PreFail {
                                     timestamp_ms: current_timestamp_ms,
+                                    prev_pre_fails: *prev_pre_fails,
                                 }
                             }
                         } else {
@@ -486,19 +490,28 @@ impl PumpState {
                                 fill: current_fill,
                                 level_since_ms: None,
                                 pump_cycle: *pump_cycle,
-                                pre_failed: *pre_failed,
+                                prev_pre_fails: 0,
                             }
                         }
+                    } else {
+                        // reset because of long pause
+                        *pump_cycle = 0;
+                        *prev_pre_fails = 0;
                     }
                 }
             }
-            PumpState::PreFail { timestamp_ms } => {
-                if current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_PREFAIL_COOLDOWN_MS {
+            PumpState::PreFail {
+                timestamp_ms,
+                prev_pre_fails,
+            } => {
+                let sleep_time = PUMP_PREFAIL_COOLDOWN_INCREMENT_MS
+                    .saturating_mul(u64::from(*prev_pre_fails).saturating_add(1));
+                if current_timestamp_ms.saturating_sub(*timestamp_ms) > sleep_time {
                     *self = PumpState::Pumping {
                         timestamp_ms: current_timestamp_ms,
                         low_fill_timestamp_ms: None,
                         pump_cycle: 0,
-                        pre_failed: true,
+                        prev_pre_fails: prev_pre_fails.saturating_add(1),
                     }
                 }
             }
@@ -511,7 +524,7 @@ impl PumpState {
     }
 
     pub fn pre_failure_since(&self) -> Option<u64> {
-        if let PumpState::PreFail { timestamp_ms } = self {
+        if let PumpState::PreFail { timestamp_ms, .. } = self {
             Some(*timestamp_ms)
         } else {
             None
