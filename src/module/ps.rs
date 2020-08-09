@@ -1,5 +1,5 @@
 use crate::module::{
-    Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
+    Module, ModuleBuilder, ModulePeripherals, MutRef, PlatformConstraints, RequestHandler,
 };
 use crate::platform::{Action, HandleError, Platform};
 use ads1x1x::{FullScaleRange, SlaveAddr};
@@ -49,7 +49,6 @@ const ALERT_TIMEOUT: u64 = 1_000 * 60;
 const ALERT_MISSING_PUMP_AFTER_MS: u64 = 1_000 * 60 * 60 * 12;
 const MIN_UPTIME_BEFORE_PANIC_MS: u64 = 1_000 * 10;
 const IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS: u64 = 1_000 * 60 * 2;
-const IRREGULAR_HIGH_PUMP_BURSTS_ALERT_AT_COUNTER_VALUE: u8 = 10;
 
 pub struct PSBuilder;
 
@@ -81,7 +80,7 @@ impl ModuleBuilder<PumpingSystem> for PSBuilder {
             ),
             pump_state: PumpState::new(platform.system.info.uptime_ms()),
             alert_active_since_timestamp_ms: None,
-            irregular_high_pump_burst_counter: None,
+            warn_since_timestamp_ms: None,
             pump_state_timestamp: OnOffTimestamp::Off(platform.system.info.uptime_ms()),
         }
     }
@@ -118,7 +117,7 @@ pub struct PumpingSystem {
     >,
     pump_state: PumpState,
     alert_active_since_timestamp_ms: Option<u64>,
-    irregular_high_pump_burst_counter: Option<(u64, u8)>,
+    warn_since_timestamp_ms: Option<u64>,
     pump_state_timestamp: OnOffTimestamp,
 }
 
@@ -142,6 +141,14 @@ impl PumpingSystem {
 
         let mut status = 0b0000_0000;
 
+        let warning_active = self
+            .warn_since_timestamp_ms
+            .map(|t| {
+                let warning_counter = timestamp_ms.saturating_sub(t) / ALERT_TIMEOUT;
+                warning_counter % 2 == 0
+            })
+            .unwrap_or(false);
+
         let alert_active = self
             .alert_active_since_timestamp_ms
             .map(|t| {
@@ -150,7 +157,7 @@ impl PumpingSystem {
             })
             .unwrap_or(false);
 
-        status |= expander::SMALL_ALARM.to_mask(alert_active);
+        status |= expander::SMALL_ALARM.to_mask(warning_active);
         status |= expander::BIG_ALARM.to_mask(alert_active);
         status |= expander::PUMP.to_mask(
             self.pump_state_timestamp
@@ -163,23 +170,22 @@ impl PumpingSystem {
         Ok(())
     }
 
-    pub fn raise_alert(&mut self, timestamp_ms: u64) {
-        self.alert_active_since_timestamp_ms = Some(timestamp_ms);
+    pub fn update_warning_and_alert(&mut self, _timestamp_ms: u64) {
+        if let Some(since) = self.pump_state.pre_failure_since() {
+            self.warn_since_timestamp_ms = Some(since);
+        }
+        if let Some(since) = self.pump_state.failed_since() {
+            self.raise_alert(since);
+        }
     }
 
-    pub fn watch_irregular_high_pump_bursts(&mut self, timestamp_ms: u64) {
-        if let Some((since, counter)) = self.irregular_high_pump_burst_counter {
-            if timestamp_ms.saturating_sub(since) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS {
-                self.irregular_high_pump_burst_counter =
-                    Some((timestamp_ms, counter.saturating_add(1)));
-                if counter >= IRREGULAR_HIGH_PUMP_BURSTS_ALERT_AT_COUNTER_VALUE {
-                    self.raise_alert(timestamp_ms);
-                }
-            } else {
-                self.irregular_high_pump_burst_counter = Some((timestamp_ms, 1));
+    pub fn raise_alert(&mut self, timestamp_ms: u64) {
+        if let Some(current) = self.alert_active_since_timestamp_ms {
+            if current < timestamp_ms {
+                self.alert_active_since_timestamp_ms = Some(current);
             }
         } else {
-            self.irregular_high_pump_burst_counter = Some((timestamp_ms, 1));
+            self.alert_active_since_timestamp_ms = Some(timestamp_ms);
         }
     }
 }
@@ -197,9 +203,10 @@ impl Module for PumpingSystem {
                 })
         {
             self.pump_state.update(timestamp_ms, fill);
+            self.update_warning_and_alert(timestamp_ms);
+
             if self.pump_state.should_pump() {
                 if self.pump_state_timestamp.on_since().is_none() {
-                    self.watch_irregular_high_pump_bursts(timestamp_ms);
                     self.pump_state_timestamp = OnOffTimestamp::On(timestamp_ms);
                 }
             } else if self.pump_state_timestamp.off_since().is_none() {
@@ -324,8 +331,8 @@ impl RequestHandler for PumpingSystem {
                 let mut buffer = [0u8; 4];
                 NetworkEndian::write_f32(
                     &mut buffer[..],
-                    self.irregular_high_pump_burst_counter
-                        .map(|(t, _c)| timestamp_ms.saturating_sub(t))
+                    self.warn_since_timestamp_ms
+                        .map(|t| timestamp_ms.saturating_sub(t))
                         .unwrap_or(0) as f32,
                 );
                 response_writer.write_all(&buffer[..])?;
@@ -337,11 +344,10 @@ impl RequestHandler for PumpingSystem {
                 let mut buffer = [0u8; 4];
                 NetworkEndian::write_f32(
                     &mut buffer[..],
-                    self.irregular_high_pump_burst_counter
-                        .filter(|(t, _c)| {
+                    self.warn_since_timestamp_ms
+                        .filter(|t| {
                             timestamp_ms.saturating_sub(*t) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS
                         })
-                        .map(|(_t, c)| c)
                         .unwrap_or(0) as f32,
                 );
                 response_writer.write_all(&buffer[..])?;
@@ -352,45 +358,8 @@ impl RequestHandler for PumpingSystem {
     }
 }
 
-pub struct MutRef<T>(T);
-
-impl<R: embedded_hal::blocking::i2c::Read> embedded_hal::blocking::i2c::Read for MutRef<&mut R> {
-    type Error = R::Error;
-
-    fn read(&mut self, address: u8, buffer: &mut [u8]) -> Result<(), Self::Error> {
-        R::read(self.0, address, buffer)
-    }
-}
-
-impl<W: embedded_hal::blocking::i2c::Write> embedded_hal::blocking::i2c::Write for MutRef<&mut W> {
-    type Error = W::Error;
-
-    fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<(), Self::Error> {
-        W::write(self.0, addr, bytes)
-    }
-}
-
-impl<WR: embedded_hal::blocking::i2c::WriteRead> embedded_hal::blocking::i2c::WriteRead
-    for MutRef<&mut WR>
-{
-    type Error = WR::Error;
-
-    fn write_read(
-        &mut self,
-        address: u8,
-        bytes: &[u8],
-        buffer: &mut [u8],
-    ) -> Result<(), Self::Error> {
-        WR::write_read(self.0, address, bytes, buffer)
-    }
-}
-
 #[derive(Debug)]
 enum PumpState {
-    AwaitingFilling {
-        /// the timestamp at which this state was initially entered
-        timestamp_ms: u64,
-    },
     NoticingFill {
         /// the timestamp at which this state was initially entered
         timestamp_ms: u64,
@@ -398,16 +367,32 @@ enum PumpState {
         fill: f32,
         /// the timestamp since when the fill value doesn't change significantly
         level_since_ms: Option<u64>,
+        pump_cycle: u8,
+        pre_failed: bool,
     },
     Pumping {
         timestamp_ms: u64,
         low_fill_timestamp_ms: Option<u64>,
+        pump_cycle: u8,
+        pre_failed: bool,
     },
     Cooldown {
+        timestamp_ms: u64,
+        pump_cycle: u8,
+        pre_failed: bool,
+    },
+    PreFail {
+        /// the timestamp at which this state was initially entered
+        timestamp_ms: u64,
+    },
+    Failure {
+        /// the timestamp at which this state was initially entered
         timestamp_ms: u64,
     },
 }
 
+const PUMP_CYCLES_BEFORE_PREFAIL: u8 = 5;
+const PUMP_PREFAIL_COOLDOWN_MS: u64 = 1_000 * 60 * 10;
 const PUMP_CRIT_THRESHOLD: f32 = 1.25_f32;
 const PUMP_HIGH_THRESHOLD: f32 = 0.95_f32;
 const PUMP_LOW_THRESHOLD: f32 = 0.2_f32;
@@ -421,24 +406,21 @@ const PUMP_ANYWAY_ONCE_NOTICED_FILLING_MS: u64 = 1_000 * 60 * 5;
 
 impl PumpState {
     pub fn new(timestamp_ms: u64) -> Self {
-        PumpState::AwaitingFilling { timestamp_ms }
+        PumpState::Cooldown {
+            timestamp_ms,
+            pump_cycle: 0,
+            pre_failed: false,
+        }
     }
 
     pub fn update(&mut self, current_timestamp_ms: u64, current_fill: f32) {
         match self {
-            PumpState::AwaitingFilling { .. } => {
-                if current_fill > PUMP_HIGH_THRESHOLD {
-                    *self = PumpState::NoticingFill {
-                        timestamp_ms: current_timestamp_ms,
-                        fill: current_fill,
-                        level_since_ms: None,
-                    }
-                }
-            }
             PumpState::NoticingFill {
                 timestamp_ms,
                 fill,
                 level_since_ms,
+                pump_cycle,
+                pre_failed,
             } => {
                 if current_fill >= *fill + PUMP_SIGNIFICANT_CHANGE {
                     *fill = current_fill;
@@ -454,12 +436,16 @@ impl PumpState {
                     *self = PumpState::Pumping {
                         timestamp_ms: current_timestamp_ms,
                         low_fill_timestamp_ms: None,
+                        pump_cycle: pump_cycle.saturating_add(1),
+                        pre_failed: *pre_failed,
                     }
                 }
             }
             PumpState::Pumping {
                 timestamp_ms,
                 low_fill_timestamp_ms,
+                pump_cycle,
+                pre_failed,
             } => {
                 let nominal_pump_cycle_completed =
                     current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_NOMINAL_ON_TIME_MS;
@@ -470,23 +456,74 @@ impl PumpState {
                 if nominal_pump_cycle_completed || early_completion {
                     *self = PumpState::Cooldown {
                         timestamp_ms: current_timestamp_ms,
+                        pump_cycle: *pump_cycle,
+                        pre_failed: *pre_failed,
                     }
                 } else if low_fill_timestamp_ms.is_none() && current_fill < PUMP_LOW_THRESHOLD {
                     *low_fill_timestamp_ms = Some(current_timestamp_ms);
                 }
             }
-            PumpState::Cooldown { timestamp_ms } => {
+            PumpState::Cooldown {
+                timestamp_ms,
+                pump_cycle,
+                pre_failed,
+            } => {
                 if current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_COOLDOWN_MS {
-                    *self = PumpState::AwaitingFilling {
-                        timestamp_ms: current_timestamp_ms,
+                    if current_fill > PUMP_HIGH_THRESHOLD {
+                        if *pump_cycle >= PUMP_CYCLES_BEFORE_PREFAIL {
+                            if *pre_failed {
+                                *self = PumpState::Failure {
+                                    timestamp_ms: current_timestamp_ms,
+                                }
+                            } else {
+                                *self = PumpState::PreFail {
+                                    timestamp_ms: current_timestamp_ms,
+                                }
+                            }
+                        } else {
+                            *self = PumpState::NoticingFill {
+                                timestamp_ms: current_timestamp_ms,
+                                fill: current_fill,
+                                level_since_ms: None,
+                                pump_cycle: *pump_cycle,
+                                pre_failed: *pre_failed,
+                            }
+                        }
                     }
                 }
             }
+            PumpState::PreFail { timestamp_ms } => {
+                if current_timestamp_ms.saturating_sub(*timestamp_ms) > PUMP_PREFAIL_COOLDOWN_MS {
+                    *self = PumpState::Pumping {
+                        timestamp_ms: current_timestamp_ms,
+                        low_fill_timestamp_ms: None,
+                        pump_cycle: 0,
+                        pre_failed: true,
+                    }
+                }
+            }
+            PumpState::Failure { timestamp_ms: _ } => {}
         }
     }
 
     pub fn should_pump(&self) -> bool {
         matches!(self, PumpState::Pumping {.. })
+    }
+
+    pub fn pre_failure_since(&self) -> Option<u64> {
+        if let PumpState::PreFail { timestamp_ms } = self {
+            Some(*timestamp_ms)
+        } else {
+            None
+        }
+    }
+
+    pub fn failed_since(&self) -> Option<u64> {
+        if let PumpState::Failure { timestamp_ms } = self {
+            Some(*timestamp_ms)
+        } else {
+            None
+        }
     }
 }
 

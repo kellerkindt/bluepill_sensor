@@ -102,3 +102,36 @@ pub struct PlatformConstraints {
     pub gpioc_crl: stm32f1xx_hal::gpio::gpioc::CRL,
     pub gpioc_crh: stm32f1xx_hal::gpio::gpioc::CRH,
 }
+
+pub struct MutRef<T>(pub T);
+
+impl<R: embedded_hal::blocking::i2c::Read> embedded_hal::blocking::i2c::Read for MutRef<&mut R> {
+    type Error = R::Error;
+
+    fn read(&mut self, address: u8, buffer: &mut [u8]) -> Result<(), Self::Error> {
+        R::read(self.0, address, buffer)
+    }
+}
+
+impl<W: embedded_hal::blocking::i2c::Write> embedded_hal::blocking::i2c::Write for MutRef<&mut W> {
+    type Error = W::Error;
+
+    fn write(&mut self, addr: u8, bytes: &[u8]) -> Result<(), Self::Error> {
+        W::write(self.0, addr, bytes)
+    }
+}
+
+impl<WR: embedded_hal::blocking::i2c::WriteRead> embedded_hal::blocking::i2c::WriteRead
+    for MutRef<&mut WR>
+{
+    type Error = WR::Error;
+
+    fn write_read(
+        &mut self,
+        address: u8,
+        bytes: &[u8],
+        buffer: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        WR::write_read(self.0, address, bytes, buffer)
+    }
+}

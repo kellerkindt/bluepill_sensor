@@ -1,6 +1,6 @@
 [package]
 name = "bluepill_sensor"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Michael Watzko <michael@watzko.de>"]
 description = "Bluepill/stm32f103 with w5500 ethernet chip, OneWire interface and sensor_common communication"
 keywords = ["arm", "cortex-m", "onewire", "ethernet"]
@@ -69,7 +69,7 @@ module-em = ["module-specified"]
 module-ps = ["module-specified", "ads1x1x", "pcf857x", "arrayvec"]
 module-specified = []
 board-rev-2 = []
-board-rev-3-0 = ["i2c2"]
+board-rev-3-0 = ["i2c2", "pcf857x"]
 i2c2 = []
 # this shall disable PC14/PC15 LEDs
 rtc = []
