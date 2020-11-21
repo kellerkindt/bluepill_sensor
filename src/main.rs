@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(broken_intra_doc_links)]
 
 #[macro_use(entry)]
 extern crate cortex_m_rt;
