@@ -90,6 +90,7 @@ pub struct Platform {
             PA6<Input<Floating>>,
             PA7<Alternate<PushPull>>,
         ),
+        u8,
     >,
 
     #[allow(unused)]
@@ -779,6 +780,7 @@ impl
                 PA6<Input<Floating>>,
                 PA7<Alternate<PushPull>>,
             ),
+            u8,
         > = Spi::spi1(
             p.SPI1,
             (sclk, miso, mosi),
@@ -895,7 +897,7 @@ impl
             system: {
                 let timer = {
                     cp.DCB.enable_trace();
-                    ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, clocks)
+                    ::stm32f1xx_hal::time::MonoTimer::new(cp.DWT, cp.DCB, clocks)
                 };
 
                 System {
