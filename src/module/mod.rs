@@ -10,6 +10,12 @@ pub mod ps;
 #[cfg(feature = "module-ps")]
 pub use ps::PumpingSystem as FeaturedModule;
 
+#[cfg(feature = "module-env")]
+pub mod env;
+
+#[cfg(feature = "module-env")]
+pub use env::EnvironmentalModule as FeaturedModule;
+
 #[cfg(not(feature = "module-specified"))]
 pub mod nop;
 
@@ -87,6 +93,10 @@ pub struct ModulePeripherals {
     pub pin_46: PB9<Input<Floating>>,
 
     pub i2c1: stm32f1xx_hal::stm32::I2C1,
+
+    pub usart1: stm32f1xx_hal::stm32::USART1,
+    pub usart2: stm32f1xx_hal::stm32::USART2,
+    pub usart3: stm32f1xx_hal::stm32::USART3,
 }
 
 pub struct PlatformConstraints {
