@@ -12,6 +12,7 @@ use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::spi::{Mode, Phase, Polarity};
 use embedded_hal::watchdog::{Watchdog, WatchdogEnable};
+use embedded_nal::{SocketAddr, SocketAddrV4, UdpClientStack, UdpFullStack};
 use nb::Error as NbError;
 use onewire;
 use onewire::Sensor as OneWireSensor;
@@ -49,13 +50,14 @@ use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
 use stm32f1xx_hal::time::{Hertz, U32Ext};
 use stm32f1xx_hal::watchdog::IndependentWatchdog;
+use w5500::bus::{FourWireError, FourWireRef};
+use w5500::net::Ipv4Addr;
+use w5500::udp::{UdpSocket, UdpSocketError};
 use w5500::*;
 
-pub const SOCKET_UDP: Socket = Socket::Socket0;
 pub const SOCKET_UDP_PORT: u16 = 51;
 
 pub type SpiError = spi::Error;
-pub type W5500CsError = Infallible;
 
 /// Everything directly build onto the bluepill sensor board
 pub struct Platform {
@@ -77,7 +79,9 @@ pub struct Platform {
     #[cfg(not(feature = "board-rev-2"))]
     pub(super) w5500_intr: PA1<Input<Floating>>,
 
-    pub(super) w5500: W5500<PB1<Output<PushPull>>>,
+    //pub(super) w5500: W5500<PB1<Output<PushPull>>>,
+    pub(super) w5500: Option<InactiveDevice<w5500::Manual>>,
+    pub(super) w5500_cs: PB1<Output<PushPull>>,
 
     /// EEPROM for configuration
     pub(super) ds93c46: DS93C46<PB0<Output<PushPull>>>,
@@ -162,40 +166,39 @@ impl Platform {
             .map_err(drop)
     }
 
-    pub fn init_network(&mut self) -> Result<(), TransferError<SpiError, W5500CsError>> {
+    pub fn init_network(&mut self) -> Result<(), ()> {
         // reset the network chip (timings are really generous)
         self.w5500_reset.set_low_infallible();
         self.system.delay.delay_ms(250_u16); // Datasheet 5.5.1 says 500_us to 1_ms (?)
         self.w5500_reset.set_high_infallible();
         self.system.delay.delay_ms(250_u16); // Datasheet says read RDY pin, the network chip needs some time to boot!
 
-        let mut active = self.w5500.activate(&mut self.spi)?;
-        let active = &mut active;
-
-        // reset taken socket
+        self.system.delay.delay_ms(100_u16);
+        self.w5500 = None;
         self.network_udp = None;
 
-        // SAFETY: safe because take UDP socket is erased
-        unsafe {
-            active.reset()?;
+        let mut device =
+            UninitializedDevice::new(FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
+                .initialize_advanced(
+                    self.network_config.mac,
+                    self.network_config.ip,
+                    self.network_config.gateway,
+                    self.network_config.subnet,
+                    w5500::Mode {
+                        on_wake_on_lan: OnWakeOnLan::Ignore,
+                        on_ping_request: OnPingRequest::Respond,
+                        connection_type: ConnectionType::Ethernet,
+                        arp_responses: ArpResponses::Cache,
+                    },
+                )
+                .map_err(drop)?;
+
+        if let Some(mut socket) = device.socket().ok() {
+            device.bind(&mut socket, SOCKET_UDP_PORT).map_err(drop)?;
+            self.network_udp = Some(socket);
         }
 
-        self.system.delay.delay_ms(100_u16);
-
-        active.set_mac(self.network_config.mac)?;
-        active.set_ip(self.network_config.ip)?;
-        active.set_subnet(self.network_config.subnet)?;
-        active.set_gateway(self.network_config.gateway)?;
-
-        self.system.delay.delay_ms(100_u16);
-
-        if let Some(uninitialized) = active.take_socket(SOCKET_UDP) {
-            // TODO lost on ERROR
-            self.network_udp = (active, uninitialized)
-                .try_into_udp_server_socket(SOCKET_UDP_PORT)
-                .ok();
-        }
-
+        self.w5500 = Some(device.deactivate().1);
         Ok(())
     }
 
@@ -207,13 +210,13 @@ impl Platform {
 
         // check for external events
         if self.handle_udp_request(&mut [0u8; 2048], module).is_err() {
-            self.log_error(ErrorFlags::NETWORK_UDP);
-        } else if self.clear_error(ErrorFlags::NETWORK_UDP) {
             if self.init_network().is_ok() {
                 self.clear_error(ErrorFlags::NETWORK_INIT);
             } else {
-                self.log_error(ErrorFlags::NETWORK_INIT);
+                self.log_error(ErrorFlags::NETWORK_UDP);
             }
+        } else {
+            self.clear_error(ErrorFlags::NETWORK_UDP);
         }
 
         // display results
@@ -294,24 +297,24 @@ impl Platform {
 
             let reset = match action {
                 Ok(Action::SendResponse) => {
-                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    self.send_udp(ip, port, &response_buffer[..response_size])?;
                     false
                 }
                 Ok(Action::SendResponseAndReset) => {
-                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    self.send_udp(ip, port, &response_buffer[..response_size])?;
                     true
                 }
                 Ok(Action::HandleRequest(request)) => {
                     Response::NotImplemented(request.id()).write(writer)?;
                     let response_size = available - writer.available();
-                    self.send_udp(&ip, port, &response_buffer[..response_size])?;
+                    self.send_udp(ip, port, &response_buffer[..response_size])?;
                     false
                 }
                 Err(e) => {
                     let to_skip = available - writer.available();
                     Response::NotAvailable(request_id).write(writer)?;
                     let response_size = available - writer.available();
-                    self.send_udp(&ip, port, &response_buffer[to_skip..response_size])?;
+                    self.send_udp(ip, port, &response_buffer[to_skip..response_size])?;
                     return Err(e)?;
                 }
             };
@@ -329,30 +332,63 @@ impl Platform {
     pub fn receive_udp(
         &mut self,
         buffer: &mut [u8],
-    ) -> Result<Option<(IpAddress, u16, usize)>, TransferError<SpiError, W5500CsError>> {
-        let mut active = self.w5500.activate(&mut self.spi)?;
-        let active = &mut active;
-        let socket = self
-            .network_udp
-            .as_ref()
-            .ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
+    ) -> Result<Option<(Ipv4Addr, u16, usize)>, SpiError> {
+        if let Some(socket) = self.network_udp.as_mut() {
+            if let Some(device) = self.w5500.take() {
+                let mut device =
+                    device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
 
-        (active, socket).receive(buffer)
+                let result: nb::Result<_, _> = device.receive(socket, buffer);
+                self.w5500 = Some(device.deactivate().1);
+
+                return match result {
+                    Ok((_, SocketAddr::V6(_))) => unreachable!(),
+                    Ok((len, SocketAddr::V4(v4))) => Ok(Some((*v4.ip(), v4.port(), len))),
+                    Err(nb::Error::WouldBlock) => Ok(None),
+                    Err(nb::Error::Other(e)) => Err(match e {
+                        UdpSocketError::NoMoreSockets
+                        | UdpSocketError::UnsupportedAddress
+                        | UdpSocketError::WriteTimeout => SpiError::ModeFault,
+                        UdpSocketError::Other(e) => match e {
+                            FourWireError::TransferError(_)
+                            | FourWireError::WriteError(_)
+                            | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
+                        },
+                    }),
+                };
+            }
+        }
+
+        Err(SpiError::ModeFault)
     }
 
-    pub fn send_udp(
-        &mut self,
-        host: &IpAddress,
-        port: u16,
-        data: &[u8],
-    ) -> Result<(), TransferError<SpiError, W5500CsError>> {
-        let mut active = self.w5500.activate(&mut self.spi)?;
-        let socket = self
-            .network_udp
-            .as_ref()
-            .ok_or(TransferError::SpiError(spi::Error::ModeFault))?;
+    pub fn send_udp(&mut self, ip: Ipv4Addr, port: u16, data: &[u8]) -> Result<(), SpiError> {
+        if let Some(socket) = self.network_udp.as_mut() {
+            if let Some(device) = self.w5500.take() {
+                let mut device =
+                    device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
 
-        (&mut active, socket).blocking_send(host, port, data)
+                let result = block!(device.send_to(
+                    socket,
+                    SocketAddr::V4(SocketAddrV4::new(ip, port)),
+                    data
+                ));
+
+                self.w5500 = Some(device.deactivate().1);
+
+                return result.map_err(|e| match e {
+                    UdpSocketError::NoMoreSockets
+                    | UdpSocketError::UnsupportedAddress
+                    | UdpSocketError::WriteTimeout => SpiError::ModeFault,
+                    UdpSocketError::Other(e) => match e {
+                        FourWireError::TransferError(_)
+                        | FourWireError::WriteError(_)
+                        | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
+                    },
+                });
+            }
+        }
+        Ok(())
     }
 
     pub fn try_handle_request<M: Module>(
@@ -387,7 +423,7 @@ impl Platform {
                 Ok(Action::SendResponse)
             }
             Request::SetNetworkMac(id, mac) => {
-                self.network_config.mac.address.copy_from_slice(&mac);
+                self.network_config.mac = MacAddress::from(mac);
                 self.network_config.write(
                     &mut self.ds93c46,
                     &mut self.spi,
@@ -397,12 +433,9 @@ impl Platform {
                 Ok(Action::SendResponseAndReset)
             }
             Request::SetNetworkIpSubnetGateway(id, ip, subnet, gateway) => {
-                self.network_config.ip.address.copy_from_slice(&ip);
-                self.network_config.subnet.address.copy_from_slice(&subnet);
-                self.network_config
-                    .gateway
-                    .address
-                    .copy_from_slice(&gateway);
+                self.network_config.ip = Ipv4Addr::from(ip);
+                self.network_config.subnet = Ipv4Addr::from(subnet);
+                self.network_config.gateway = Ipv4Addr::from(gateway);
                 self.network_config.write(
                     &mut self.ds93c46,
                     &mut self.spi,
@@ -449,10 +482,10 @@ impl Platform {
             Request::RetrieveNetworkConfiguration(id) => {
                 Response::Ok(id, Format::ValueOnly(Type::Bytes(6 + 3 * 4)))
                     .write(response_writer)?;
-                response_writer.write_all(&self.network_config.mac.address)?;
-                response_writer.write_all(&self.network_config.ip.address)?;
-                response_writer.write_all(&self.network_config.subnet.address)?;
-                response_writer.write_all(&self.network_config.gateway.address)?;
+                response_writer.write_all(&self.network_config.mac.octets())?;
+                response_writer.write_all(&self.network_config.ip.octets())?;
+                response_writer.write_all(&self.network_config.subnet.octets())?;
+                response_writer.write_all(&self.network_config.gateway.octets())?;
                 Ok(Action::SendResponse)
             }
             Request::RetrieveVersionInformation(id) => {
@@ -795,6 +828,23 @@ impl
         );
 
         let mut w5500_reset = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+        let mut w5500_cs = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
+        let w5500 = {
+            w5500_cs.set_low_infallible(); // deselect
+            w5500_reset.set_high_infallible(); // request reset
+            delay.delay_ms(250_u16); // pad some time for reset
+            w5500_reset.set_low_infallible();
+            delay.delay_ms(250_u16); // allow boot
+
+            UninitializedDevice::new(FourWireRef::new(&mut spi, &mut w5500_cs))
+                .initialize_manual(
+                    MacAddress::new(0x02, 0x00, 0x00, 0x00, 0x00, 0x00),
+                    NetworkConfiguration::DEFAULT_IP,
+                    Default::default(),
+                )
+                .ok()
+                .map(|device| device.deactivate().1)
+        };
 
         let platform = Platform {
             #[cfg(feature = "board-rev-2")]
@@ -814,25 +864,8 @@ impl
             w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
             #[cfg(not(feature = "board-rev-2"))]
             w5500_intr: gpioa.pa1.into_floating_input(&mut gpioa.crl),
-            w5500: {
-                let mut w5500_cs = gpiob.pb1.into_push_pull_output(&mut gpiob.crl);
-
-                w5500_cs.set_low_infallible(); // deselect
-
-                w5500_reset.set_high_infallible(); // request reset
-                delay.delay_ms(250_u16);
-                w5500_reset.set_low_infallible(); // allow boot
-
-                W5500::with_initialisation(
-                    w5500_cs,
-                    &mut spi,
-                    OnWakeOnLan::Ignore,
-                    OnPingRequest::Respond,
-                    ConnectionType::Ethernet,
-                    ArpResponses::Cache,
-                )
-                .unwrap()
-            },
+            w5500,
+            w5500_cs,
 
             spi,
 
@@ -930,6 +963,9 @@ impl
             pin_45: gpiob.pb8,
             pin_46: gpiob.pb9,
             i2c1: p.I2C1,
+            usart1: p.USART1,
+            usart2: p.USART2,
+            usart3: p.USART3,
         };
 
         let constraints = PlatformConstraints {
@@ -963,13 +999,6 @@ pub enum HandleError {
     NotMagicCrcAtStart,
     CrcError,
     I2c(NbError<I2cError>),
-    NetworkError(TransferError<spi::Error, Infallible>),
-}
-
-impl From<TransferError<spi::Error, Infallible>> for HandleError {
-    fn from(e: TransferError<spi::Error, Infallible>) -> Self {
-        HandleError::NetworkError(e)
-    }
 }
 
 impl From<spi::Error> for HandleError {
