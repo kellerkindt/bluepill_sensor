@@ -229,6 +229,20 @@ impl Platform {
                 self.led_red_tmp_error.set_low_infallible();
             }
         }
+
+        if let Some(device) = self.w5500.take() {
+            let mut device = device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
+
+            let result = device.mac();
+            self.w5500 = Some(device.deactivate().1);
+
+            if let Ok(mac) = result {
+                if self.network_config.mac != mac {
+                    self.log_error(ErrorFlags::NETWORK_CRASH);
+                    let _ = self.init_network();
+                }
+            }
+        }
     }
 
     pub fn log_error(&mut self, flags: ErrorFlags) {
@@ -265,6 +279,11 @@ impl Platform {
         let result = self.handle_udp_request_internal(buffer, module);
         #[cfg(feature = "board-rev-2")]
         self.led_blue_handle_udp.set_low_infallible();
+        #[cfg(feature = "board-rev-2")]
+        match result.is_err() {
+            true => self.led_yellow_boot_warning.set_low_infallible(),
+            false => self.led_yellow_boot_warning.set_high_infallible(),
+        }
         result
     }
 
@@ -461,7 +480,7 @@ impl Platform {
                 let mut buffer = [0u8; 4 + 8 + 6 + 1 + 1];
                 Response::Ok(
                     id,
-                    Format::ValueOnly(Type::Bytes((buffer.len() + name.len()) as u8)),
+                    Format::ValueOnly(Type::Bytes((buffer.len() + name.len() + 1) as u8)),
                 )
                 .write(response_writer)?;
                 NetworkEndian::write_u32(&mut buffer[0..], self.system.info.frequency().0);
@@ -477,6 +496,8 @@ impl Platform {
 
                 response_writer.write_all(&buffer)?;
                 response_writer.write_all(&name[..buffer[19] as usize])?;
+
+                response_writer.write_u8(self.errors.bits)?;
                 Ok(Action::SendResponse)
             }
             Request::RetrieveNetworkConfiguration(id) => {
@@ -1036,5 +1057,6 @@ bitflags::bitflags! {
         const NETWORK_LOAD = 0b0000_0001;
         const NETWORK_INIT = 0b0000_0010;
         const NETWORK_UDP = 0b0000_0100;
+        const NETWORK_CRASH = 0b0000_1000;
     }
 }
