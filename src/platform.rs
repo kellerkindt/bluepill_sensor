@@ -223,20 +223,18 @@ impl Platform {
         #[allow(unused)]
         let uptime_ms = self.system.info.uptime_ms();
 
-        #[cfg(any(not(feature = "i2c2"), not(feature = "rtc")))]
-        if let Some(err) = self.last_error_at_uptime_ms {
-            if uptime_ms.saturating_sub(err) >= 1_000 {
-                self.led_red_tmp_error.set_low_infallible();
-            }
-        }
+        // #[cfg(any(not(feature = "i2c2"), not(feature = "rtc")))]
+        // if let Some(err) = self.last_error_at_uptime_ms {
+        //     if uptime_ms.saturating_sub(err) >= 1_000 {
+        //         self.led_red_tmp_error.set_low_infallible();
+        //     }
+        // }
 
-        if let Some(device) = self.w5500.take() {
-            let mut device = device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
-
-            let result = device.mac();
-            self.w5500 = Some(device.deactivate().1);
-
-            if let Ok(mac) = result {
+        if let Some(device) = self.w5500.as_mut() {
+            if let Ok(mac) = device
+                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
+                .mac()
+            {
                 if self.network_config.mac != mac {
                     self.log_error(ErrorFlags::NETWORK_CRASH);
                     let _ = self.init_network();
@@ -352,50 +350,15 @@ impl Platform {
         &mut self,
         buffer: &mut [u8],
     ) -> Result<Option<(Ipv4Addr, u16, usize)>, SpiError> {
-        if let Some(socket) = self.network_udp.as_mut() {
-            if let Some(device) = self.w5500.take() {
-                let mut device =
-                    device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
-
-                let result: nb::Result<_, _> = device.receive(socket, buffer);
-                self.w5500 = Some(device.deactivate().1);
-
-                return match result {
-                    Ok((_, SocketAddr::V6(_))) => unreachable!(),
-                    Ok((len, SocketAddr::V4(v4))) => Ok(Some((*v4.ip(), v4.port(), len))),
-                    Err(nb::Error::WouldBlock) => Ok(None),
-                    Err(nb::Error::Other(e)) => Err(match e {
-                        UdpSocketError::NoMoreSockets
-                        | UdpSocketError::UnsupportedAddress
-                        | UdpSocketError::WriteTimeout => SpiError::ModeFault,
-                        UdpSocketError::Other(e) => match e {
-                            FourWireError::TransferError(_)
-                            | FourWireError::WriteError(_)
-                            | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
-                        },
-                    }),
-                };
-            }
-        }
-
-        Err(SpiError::ModeFault)
-    }
-
-    pub fn send_udp(&mut self, ip: Ipv4Addr, port: u16, data: &[u8]) -> Result<(), SpiError> {
-        if let Some(socket) = self.network_udp.as_mut() {
-            if let Some(device) = self.w5500.take() {
-                let mut device =
-                    device.activate(FourWireRef::new(&mut self.spi, &mut self.w5500_cs));
-
-                let result = block!(device.send_to(
-                    socket,
-                    SocketAddr::V4(SocketAddrV4::new(ip, port)),
-                    data
-                ));
-
-                self.w5500 = Some(device.deactivate().1);
-
-                return result.map_err(|e| match e {
+        if let (Some(socket), Some(device)) = (self.network_udp.as_mut(), self.w5500.as_mut()) {
+            return match device
+                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
+                .receive(socket, buffer)
+            {
+                Ok((_, SocketAddr::V6(_))) => unreachable!(),
+                Ok((len, SocketAddr::V4(v4))) => Ok(Some((*v4.ip(), v4.port(), len))),
+                Err(nb::Error::WouldBlock) => Ok(None),
+                Err(nb::Error::Other(e)) => Err(match e {
                     UdpSocketError::NoMoreSockets
                     | UdpSocketError::UnsupportedAddress
                     | UdpSocketError::WriteTimeout => SpiError::ModeFault,
@@ -404,8 +367,28 @@ impl Platform {
                         | FourWireError::WriteError(_)
                         | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
                     },
-                });
-            }
+                }),
+            };
+        }
+
+        Err(SpiError::ModeFault)
+    }
+
+    pub fn send_udp(&mut self, ip: Ipv4Addr, port: u16, data: &[u8]) -> Result<(), SpiError> {
+        if let (Some(socket), Some(device)) = (self.network_udp.as_mut(), self.w5500.as_mut()) {
+            return block!(device
+                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
+                .send_to(socket, SocketAddr::V4(SocketAddrV4::new(ip, port)), data))
+            .map_err(|e| match e {
+                UdpSocketError::NoMoreSockets
+                | UdpSocketError::UnsupportedAddress
+                | UdpSocketError::WriteTimeout => SpiError::ModeFault,
+                UdpSocketError::Other(e) => match e {
+                    FourWireError::TransferError(_)
+                    | FourWireError::WriteError(_)
+                    | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
+                },
+            });
         }
         Ok(())
     }
