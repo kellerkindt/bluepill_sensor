@@ -12,7 +12,7 @@ use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::spi::{Mode, Phase, Polarity};
 use embedded_hal::watchdog::{Watchdog, WatchdogEnable};
-use embedded_nal::{SocketAddr, SocketAddrV4, UdpClientStack, UdpFullStack};
+use embedded_nal::{IpAddr, SocketAddr, SocketAddrV4, UdpClientStack, UdpFullStack};
 use nb::Error as NbError;
 use onewire;
 use onewire::Sensor as OneWireSensor;
@@ -50,10 +50,14 @@ use stm32f1xx_hal::time::Instant;
 use stm32f1xx_hal::time::MonoTimer;
 use stm32f1xx_hal::time::{Hertz, U32Ext};
 use stm32f1xx_hal::watchdog::IndependentWatchdog;
-use w5500::bus::{FourWireError, FourWireRef};
+use w5500::bus::FourWireRef;
 use w5500::net::Ipv4Addr;
-use w5500::udp::{UdpSocket, UdpSocketError};
+use w5500::udp::UdpSocket;
 use w5500::*;
+
+mod subsystem;
+
+use crate::platform::subsystem::SpiBus;
 
 pub const SOCKET_UDP_PORT: u16 = 51;
 
@@ -71,41 +75,12 @@ pub struct Platform {
     #[cfg(not(feature = "board-rev-2"))]
     pub(super) board_reset: PA2<Output<OpenDrain>>,
 
-    /// W5500 interrupt pin
-    #[allow(unused)]
-    #[cfg(feature = "board-rev-2")]
-    pub(super) w5500_intr: PB10<Input<Floating>>,
-    #[allow(unused)]
-    #[cfg(not(feature = "board-rev-2"))]
-    pub(super) w5500_intr: PA1<Input<Floating>>,
-
-    //pub(super) w5500: W5500<PB1<Output<PushPull>>>,
-    pub(super) w5500: Option<InactiveDevice<w5500::Manual>>,
-    pub(super) w5500_cs: PB1<Output<PushPull>>,
-
-    /// EEPROM for configuration
-    pub(super) ds93c46: DS93C46<PB0<Output<PushPull>>>,
-
-    pub(super) spi: Spi<
-        SPI1,
-        Spi1NoRemap,
-        (
-            PA5<Alternate<PushPull>>,
-            PA6<Input<Floating>>,
-            PA7<Alternate<PushPull>>,
-        ),
-        u8,
-    >,
-
     #[allow(unused)]
     #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
     pub(super) i2c: BlockingI2c<
         stm32f1xx_hal::pac::I2C2,
         (PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>),
     >,
-
-    /// Low-Active pin to restart the W5500
-    pub(super) w5500_reset: PA4<Output<PushPull>>,
 
     #[cfg(feature = "board-rev-2")]
     pub(super) led_blue_handle_udp: PA3<Output<PushPull>>,
@@ -146,14 +121,17 @@ pub struct Platform {
 
     /// All errors that ever occurred while running, do not reset
     error_history: ErrorFlags,
+
+    subsystem_spi: SpiBus,
 }
 
 impl Platform {
     pub fn save_network_configuration(&mut self) -> Result<(), ()> {
-        match self
-            .network_config
-            .write(&mut self.ds93c46, &mut self.spi, &mut self.system.delay)
-        {
+        match self.network_config.write(
+            &mut self.subsystem_spi.ds93c46,
+            &mut self.subsystem_spi.spi,
+            &mut self.system.delay,
+        ) {
             Err(_) => Err(()),
             Ok(_) => Ok(()),
         }
@@ -161,44 +139,27 @@ impl Platform {
 
     pub fn load_network_configuration(&mut self) -> Result<(), ()> {
         self.network_config
-            .load(&mut self.ds93c46, &mut self.spi, &mut self.system.delay)
+            .load(
+                &mut self.subsystem_spi.ds93c46,
+                &mut self.subsystem_spi.spi,
+                &mut self.system.delay,
+            )
             .map(drop)
             .map_err(drop)
     }
 
     pub fn init_network(&mut self) -> Result<(), ()> {
-        // reset the network chip (timings are really generous)
-        self.w5500_reset.set_low_infallible();
-        self.system.delay.delay_ms(250_u16); // Datasheet 5.5.1 says 500_us to 1_ms (?)
-        self.w5500_reset.set_high_infallible();
-        self.system.delay.delay_ms(250_u16); // Datasheet says read RDY pin, the network chip needs some time to boot!
-
-        self.system.delay.delay_ms(100_u16);
-        self.w5500 = None;
         self.network_udp = None;
+        self.subsystem_spi
+            .init_network(&mut self.system.delay, &self.network_config)?;
 
-        let mut device =
-            UninitializedDevice::new(FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
-                .initialize_advanced(
-                    self.network_config.mac,
-                    self.network_config.ip,
-                    self.network_config.gateway,
-                    self.network_config.subnet,
-                    w5500::Mode {
-                        on_wake_on_lan: OnWakeOnLan::Ignore,
-                        on_ping_request: OnPingRequest::Respond,
-                        connection_type: ConnectionType::Ethernet,
-                        arp_responses: ArpResponses::Cache,
-                    },
-                )
-                .map_err(drop)?;
-
-        if let Some(mut socket) = device.socket().ok() {
-            device.bind(&mut socket, SOCKET_UDP_PORT).map_err(drop)?;
-            self.network_udp = Some(socket);
+        if let Some(mut device) = self.subsystem_spi.network() {
+            if let Some(mut socket) = device.socket().ok() {
+                device.bind(&mut socket, SOCKET_UDP_PORT).map_err(drop)?;
+                self.network_udp = Some(socket);
+            }
         }
 
-        self.w5500 = Some(device.deactivate().1);
         Ok(())
     }
 
@@ -230,11 +191,8 @@ impl Platform {
         //     }
         // }
 
-        if let Some(device) = self.w5500.as_mut() {
-            if let Ok(mac) = device
-                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
-                .mac()
-            {
+        if let Some(mut device) = self.subsystem_spi.network() {
+            if let Ok(mac) = device.mac() {
                 if self.network_config.mac != mac {
                     self.log_error(ErrorFlags::NETWORK_CRASH);
                     let _ = self.init_network();
@@ -350,47 +308,20 @@ impl Platform {
         &mut self,
         buffer: &mut [u8],
     ) -> Result<Option<(Ipv4Addr, u16, usize)>, SpiError> {
-        if let (Some(socket), Some(device)) = (self.network_udp.as_mut(), self.w5500.as_mut()) {
-            return match device
-                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
-                .receive(socket, buffer)
-            {
-                Ok((_, SocketAddr::V6(_))) => unreachable!(),
-                Ok((len, SocketAddr::V4(v4))) => Ok(Some((*v4.ip(), v4.port(), len))),
-                Err(nb::Error::WouldBlock) => Ok(None),
-                Err(nb::Error::Other(e)) => Err(match e {
-                    UdpSocketError::NoMoreSockets
-                    | UdpSocketError::UnsupportedAddress
-                    | UdpSocketError::WriteTimeout => SpiError::ModeFault,
-                    UdpSocketError::Other(e) => match e {
-                        FourWireError::TransferError(_)
-                        | FourWireError::WriteError(_)
-                        | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
-                    },
-                }),
-            };
+        if let Some(socket) = self.network_udp.as_mut() {
+            self.subsystem_spi.network_receive_udp(buffer, socket)
+        } else {
+            Err(SpiError::ModeFault)
         }
-
-        Err(SpiError::ModeFault)
     }
 
     pub fn send_udp(&mut self, ip: Ipv4Addr, port: u16, data: &[u8]) -> Result<(), SpiError> {
-        if let (Some(socket), Some(device)) = (self.network_udp.as_mut(), self.w5500.as_mut()) {
-            return block!(device
-                .activate_ref(&mut FourWireRef::new(&mut self.spi, &mut self.w5500_cs))
-                .send_to(socket, SocketAddr::V4(SocketAddrV4::new(ip, port)), data))
-            .map_err(|e| match e {
-                UdpSocketError::NoMoreSockets
-                | UdpSocketError::UnsupportedAddress
-                | UdpSocketError::WriteTimeout => SpiError::ModeFault,
-                UdpSocketError::Other(e) => match e {
-                    FourWireError::TransferError(_)
-                    | FourWireError::WriteError(_)
-                    | FourWireError::ChipSelectError(_) => SpiError::ModeFault,
-                },
-            });
+        if let Some(socket) = self.network_udp.as_mut() {
+            self.subsystem_spi
+                .network_send_udp_to(ip, port, data, socket)
+        } else {
+            Err(SpiError::ModeFault)
         }
-        Ok(())
     }
 
     pub fn try_handle_request<M: Module>(
@@ -427,8 +358,8 @@ impl Platform {
             Request::SetNetworkMac(id, mac) => {
                 self.network_config.mac = MacAddress::from(mac);
                 self.network_config.write(
-                    &mut self.ds93c46,
-                    &mut self.spi,
+                    &mut self.subsystem_spi.ds93c46,
+                    &mut self.subsystem_spi.spi,
                     &mut self.system.delay,
                 )?;
                 Response::Ok(id, Format::Empty).write(response_writer)?;
@@ -439,8 +370,8 @@ impl Platform {
                 self.network_config.subnet = Ipv4Addr::from(subnet);
                 self.network_config.gateway = Ipv4Addr::from(gateway);
                 self.network_config.write(
-                    &mut self.ds93c46,
-                    &mut self.spi,
+                    &mut self.subsystem_spi.ds93c46,
+                    &mut self.subsystem_spi.spi,
                     &mut self.system.delay,
                 )?;
                 Response::Ok(id, Format::Empty).write(response_writer)?;
@@ -864,40 +795,42 @@ impl
                 self_reset
             },
 
-            #[cfg(feature = "board-rev-2")]
-            w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
-            #[cfg(not(feature = "board-rev-2"))]
-            w5500_intr: gpioa.pa1.into_floating_input(&mut gpioa.crl),
-            w5500,
-            w5500_cs,
+            subsystem_spi: SpiBus {
+                #[cfg(feature = "board-rev-2")]
+                w5500_intr: gpiob.pb10.into_floating_input(&mut gpiob.crh),
+                #[cfg(not(feature = "board-rev-2"))]
+                w5500_intr: gpioa.pa1.into_floating_input(&mut gpioa.crl),
+                w5500,
+                w5500_cs,
 
-            spi,
+                spi,
 
-            #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
-            i2c: {
-                BlockingI2c::i2c2(
-                    p.I2C2,
-                    (
-                        gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh),
-                        gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh),
-                    ),
-                    i2c::Mode::standard(100.khz()),
-                    clocks,
-                    &mut rcc.apb1,
-                    1_000,
-                    2,
-                    10_000,
-                    1_000_000,
-                )
+                #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
+                i2c: {
+                    BlockingI2c::i2c2(
+                        p.I2C2,
+                        (
+                            gpiob.pb10.into_alternate_open_drain(&mut gpiob.crh),
+                            gpiob.pb11.into_alternate_open_drain(&mut gpiob.crh),
+                        ),
+                        i2c::Mode::standard(100.khz()),
+                        clocks,
+                        &mut rcc.apb1,
+                        1_000,
+                        2,
+                        10_000,
+                        1_000_000,
+                    )
+                },
+
+                ds93c46: {
+                    let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+                    ds93c46_cs.set_low_infallible(); // deselect
+                    DS93C46::new(ds93c46_cs)
+                },
+
+                w5500_reset,
             },
-
-            ds93c46: {
-                let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
-                ds93c46_cs.set_low_infallible(); // deselect
-                DS93C46::new(ds93c46_cs)
-            },
-
-            w5500_reset,
 
             #[cfg(feature = "board-rev-2")]
             led_red_tmp_error: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
