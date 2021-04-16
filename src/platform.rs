@@ -12,7 +12,7 @@ use embedded_hal::blocking::i2c::Write;
 use embedded_hal::blocking::i2c::WriteRead;
 use embedded_hal::spi::{Mode, Phase, Polarity};
 use embedded_hal::watchdog::{Watchdog, WatchdogEnable};
-use embedded_nal::{IpAddr, SocketAddr, SocketAddrV4, UdpClientStack, UdpFullStack};
+use embedded_nal::{UdpClientStack, UdpFullStack};
 use nb::Error as NbError;
 use onewire;
 use onewire::Sensor as OneWireSensor;

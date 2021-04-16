@@ -3,7 +3,7 @@ use crate::ds93c46::DS93C46;
 use crate::io_utils::OutputPinInfallible;
 use crate::platform::SpiError;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_nal::{IpAddr, UdpFullStack};
+use embedded_nal::UdpFullStack;
 use embedded_nal::{SocketAddr, SocketAddrV4, UdpClientStack};
 use stm32f1xx_hal::gpio::gpioa::{PA4, PA5, PA6, PA7};
 use stm32f1xx_hal::gpio::gpiob::{PB0, PB1, PB10};
