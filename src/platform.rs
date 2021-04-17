@@ -55,9 +55,11 @@ use w5500::net::Ipv4Addr;
 use w5500::udp::UdpSocket;
 use w5500::*;
 
-mod subsystem;
+mod subsystem_i2c;
+mod subsystem_spi;
 
-use crate::platform::subsystem::SpiBus;
+use subsystem_i2c::I2cBus;
+use subsystem_spi::SpiBus;
 
 pub const SOCKET_UDP_PORT: u16 = 51;
 
@@ -74,13 +76,6 @@ pub struct Platform {
     pub(super) board_reset: PB11<Output<OpenDrain>>,
     #[cfg(not(feature = "board-rev-2"))]
     pub(super) board_reset: PA2<Output<OpenDrain>>,
-
-    #[allow(unused)]
-    #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
-    pub(super) i2c: BlockingI2c<
-        stm32f1xx_hal::pac::I2C2,
-        (PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>),
-    >,
 
     #[cfg(feature = "board-rev-2")]
     pub(super) led_blue_handle_udp: PA3<Output<PushPull>>,
@@ -123,6 +118,7 @@ pub struct Platform {
     error_history: ErrorFlags,
 
     subsystem_spi: SpiBus,
+    subsystem_i2c: I2cBus,
 }
 
 impl Platform {
@@ -805,6 +801,16 @@ impl
 
                 spi,
 
+                ds93c46: {
+                    let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+                    ds93c46_cs.set_low_infallible(); // deselect
+                    DS93C46::new(ds93c46_cs)
+                },
+
+                w5500_reset,
+            },
+
+            subsystem_i2c: I2cBus {
                 #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
                 i2c: {
                     BlockingI2c::i2c2(
@@ -822,14 +828,6 @@ impl
                         1_000_000,
                     )
                 },
-
-                ds93c46: {
-                    let mut ds93c46_cs = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
-                    ds93c46_cs.set_low_infallible(); // deselect
-                    DS93C46::new(ds93c46_cs)
-                },
-
-                w5500_reset,
             },
 
             #[cfg(feature = "board-rev-2")]
