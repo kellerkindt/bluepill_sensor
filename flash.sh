@@ -4,6 +4,9 @@ unset CARGO_INCREMENTAL
 BIN="${CARGO_TARGET_DIR:-../target}/thumbv7m-none-eabi/release/bluepill_sensor"
 echo $BIN
 
+# china clone CPU-ID \
+#        -c "set CPUTAPID 0x2ba01477" \
+
 ./build.sh "$@" \
  && openocd \
 	-f interface/stlink-v2.cfg \
