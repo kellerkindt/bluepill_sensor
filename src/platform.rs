@@ -60,9 +60,15 @@ use w5500::*;
 mod subsystem_i2c;
 mod subsystem_spi;
 
+#[cfg(feature = "sntp")]
+mod sntp;
+
 #[cfg(feature = "board-rev-3-0")]
 use subsystem_i2c::I2cBus;
 use subsystem_spi::SpiBus;
+
+#[cfg(feature = "sntp")]
+use sntp::Handle as SntpHandle;
 
 pub const SOCKET_UDP_PORT: u16 = 51;
 
@@ -120,6 +126,9 @@ pub struct Platform {
     /// All errors that ever occurred while running, do not reset
     error_history: ErrorFlags,
 
+    #[cfg(feature = "sntp")]
+    sntp: SntpHandle,
+
     #[cfg(feature = "board-rev-3-0")]
     subsystem_i2c: I2cBus,
     subsystem_spi: SpiBus,
@@ -149,6 +158,8 @@ impl Platform {
     }
 
     pub fn init_network(&mut self) -> Result<(), ()> {
+        #[cfg(feature = "sntp")]
+        self.sntp.reset_network();
         self.network_udp = None;
         self.subsystem_spi
             .init_network(&mut self.system.delay, &self.network_config)?;
@@ -157,6 +168,11 @@ impl Platform {
             if let Some(mut socket) = device.socket().ok() {
                 device.bind(&mut socket, SOCKET_UDP_PORT).map_err(drop)?;
                 self.network_udp = Some(socket);
+            }
+            #[cfg(feature = "sntp")]
+            if let Some(mut socket) = device.socket().ok() {
+                device.bind(&mut socket, 43984).map_err(drop)?;
+                self.sntp.set_socket(socket);
             }
         }
 
@@ -167,6 +183,12 @@ impl Platform {
         // do all the internal updates
         self.system.info.update_uptime_offset();
         self.check_factory_reset_flag();
+
+        #[cfg(feature = "sntp")]
+        if let Err(flags) = self.sntp.update(&self.system.info, &mut self.subsystem_spi) {
+            self.errors |= flags;
+        }
+
         module.update(self);
 
         // check for external events
@@ -894,6 +916,9 @@ impl
                     led_status: gpioc.pc13.into_push_pull_output(&mut gpioc.crh),
                 }
             },
+
+            #[cfg(feature = "sntp")]
+            sntp: SntpHandle::new(),
         };
 
         // let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
@@ -990,5 +1015,7 @@ bitflags::bitflags! {
         const NETWORK_INIT = 0b0000_0010;
         const NETWORK_UDP = 0b0000_0100;
         const NETWORK_CRASH = 0b0000_1000;
+        const SNTP_REQUEST = 0b0001_0000;
+        const SNTP_RESPONSE = 0b0010_0000;
     }
 }
