@@ -38,6 +38,7 @@ ads1x1x = { version = "0.2.1", optional = true }
 pcf857x = { version = "0.3.0", optional = true }
 arrayvec = { version = "0.5.1", optional = true, default-features = false, features = ["array-sizes-129-255"] }
 embedded-nal = "0.4.0"
+lm75 = { version = "0.1.2", optional = true }
 
 [dependencies.stm32f1xx-hal]
 version = "0.7.0"
@@ -74,8 +75,9 @@ module-specified = []
 board-rev-specified = []
 board-rev-1 = ["board-rev-specified"]
 board-rev-2 = ["board-rev-specified"]
-board-rev-3 = ["board-rev-3-0"]
-board-rev-3-0 = ["board-rev-specified", "i2c2", "pcf857x"]
+board-rev-3-0 = ["board-rev-specified", "i2c2", "lm75"]
+board-rev-3-1 = ["board-rev-3-0", "pcf857x"]
 i2c2 = []
 # this shall disable PC14/PC15 LEDs
 rtc = []
+demo-temp-lm75-pcf857x = ["board-rev-3-1", "pcf857x", "lm75"]

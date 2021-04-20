@@ -1,5 +1,4 @@
 use embedded_hal::blocking::i2c;
-#[cfg(feature = "board-rev-3")]
 use lm75::{Error as Lm75Error, Lm75, SlaveAddr};
 use nb::Error as NbError;
 use stm32f1xx_hal::gpio::gpiob::{PB10, PB11};
@@ -7,8 +6,6 @@ use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
 use stm32f1xx_hal::i2c::{BlockingI2c, Error as I2cError};
 
 pub struct I2cBus {
-    #[allow(unused)]
-    #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
     pub(super) i2c: BlockingI2c<
         stm32f1xx_hal::pac::I2C2,
         (PB10<Alternate<OpenDrain>>, PB11<Alternate<OpenDrain>>),
@@ -16,12 +13,18 @@ pub struct I2cBus {
 }
 
 impl I2cBus {
-    #[cfg(feature = "board-rev-3")]
+    #[allow(unused)]
+    pub fn init(&mut self) {
+        #[cfg(feature = "board-rev-3-1")]
+        let _ = self.set_expander_gpio(0xFF);
+    }
+
+    #[allow(unused)]
     pub fn read_temperature(&mut self) -> Result<f32, Lm75Error<NbError<I2cError>>> {
         Lm75::new(I2cRef(&mut self.i2c), SlaveAddr::Default).read_temperature()
     }
 
-    #[cfg(feature = "board-rev-3")]
+    #[allow(unused)]
     pub fn read_temperature_blocking(&mut self) -> Result<f32, Lm75Error<I2cError>> {
         loop {
             match self.read_temperature() {
@@ -29,6 +32,36 @@ impl I2cBus {
                 Err(lm75::Error::InvalidInputData) => break Err(lm75::Error::InvalidInputData),
                 Err(lm75::Error::I2C(nb::Error::Other(e))) => break Err(lm75::Error::I2C(e)),
                 Err(lm75::Error::I2C(nb::Error::WouldBlock)) => continue,
+            }
+        }
+    }
+
+    #[allow(unused)]
+    #[cfg(feature = "board-rev-3-1")]
+    pub fn set_expander_gpio(
+        &mut self,
+        status: u8,
+    ) -> Result<(), pcf857x::Error<nb::Error<I2cError>>> {
+        pcf857x::Pcf8574::new(I2cRef(&mut self.i2c), pcf857x::SlaveAddr::Default).set(status)
+    }
+
+    #[allow(unused)]
+    #[cfg(feature = "board-rev-3-1")]
+    pub fn set_expander_gpio_blocking(
+        &mut self,
+        status: u8,
+    ) -> Result<(), pcf857x::Error<I2cError>> {
+        loop {
+            match self.set_expander_gpio(status) {
+                Ok(v) => break Ok(v),
+                Err(pcf857x::Error::I2C(nb::Error::WouldBlock)) => continue,
+                Err(pcf857x::Error::I2C(nb::Error::Other(e))) => break Err(pcf857x::Error::I2C(e)),
+                Err(pcf857x::Error::CouldNotAcquireDevice) => {
+                    break Err(pcf857x::Error::CouldNotAcquireDevice)
+                }
+                Err(pcf857x::Error::InvalidInputData) => {
+                    break Err(pcf857x::Error::InvalidInputData)
+                }
             }
         }
     }

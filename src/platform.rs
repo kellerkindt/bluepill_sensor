@@ -27,6 +27,7 @@ use sensor_common::{Format, Read as SensorRead};
 use stm32f1xx_hal::afio::AfioExt;
 use stm32f1xx_hal::flash::FlashExt;
 use stm32f1xx_hal::gpio::gpioa::*;
+#[cfg(feature = "board-rev-2")]
 use stm32f1xx_hal::gpio::gpiob::*;
 #[cfg(any(feature = "board-rev-2", not(feature = "rtc")))]
 use stm32f1xx_hal::gpio::gpioc::*;
@@ -55,9 +56,11 @@ use w5500::net::Ipv4Addr;
 use w5500::udp::UdpSocket;
 use w5500::*;
 
+#[cfg(feature = "board-rev-3-0")]
 mod subsystem_i2c;
 mod subsystem_spi;
 
+#[cfg(feature = "board-rev-3-0")]
 use subsystem_i2c::I2cBus;
 use subsystem_spi::SpiBus;
 
@@ -84,14 +87,14 @@ pub struct Platform {
     pub(super) led_yellow_boot_warning: PA2<Output<PushPull>>,
     #[cfg(all(not(feature = "board-rev-2"), not(feature = "rtc")))]
     pub(super) led_yellow_boot_warning: PC14<Output<PushPull>>,
-    #[cfg(all(not(feature = "board-rev-2"), not(feature = "i2c2")))]
+    #[cfg(all(feature = "board-rev-3-0", not(feature = "i2c2")))]
     pub(super) led_yellow_boot_warning: PB11<Output<PushPull>>,
 
     #[cfg(feature = "board-rev-2")]
     pub(super) led_red_tmp_error: PA1<Output<PushPull>>,
     #[cfg(all(not(feature = "board-rev-2"), not(feature = "rtc")))]
     pub(super) led_red_tmp_error: PC15<Output<PushPull>>,
-    #[cfg(all(not(feature = "board-rev-2"), not(feature = "i2c2")))]
+    #[cfg(all(feature = "board-rev-3-0", not(feature = "i2c2")))]
     pub(super) led_red_tmp_error: PB10<Output<PushPull>>,
 
     /// UserInput to reset the configuration to flash-default
@@ -117,8 +120,9 @@ pub struct Platform {
     /// All errors that ever occurred while running, do not reset
     error_history: ErrorFlags,
 
-    subsystem_spi: SpiBus,
+    #[cfg(feature = "board-rev-3-0")]
     subsystem_i2c: I2cBus,
+    subsystem_spi: SpiBus,
 }
 
 impl Platform {
@@ -193,6 +197,18 @@ impl Platform {
                     self.log_error(ErrorFlags::NETWORK_CRASH);
                     let _ = self.init_network();
                 }
+            }
+        }
+
+        #[cfg(feature = "demo-temp-lm75-pcf857x")]
+        if uptime_ms % 1_000 == 0 {
+            if let Ok(temp) = self.subsystem_i2c.read_temperature_blocking() {
+                let temp = ((temp.clamp(20.0_f32, 41.0_f32) - 20_f32) / 3_f32) as u8;
+                let mut status = 0xFF >> 1;
+                for _ in 0..temp {
+                    status = status >> 1;
+                }
+                let _ = self.subsystem_i2c.set_expander_gpio(status);
             }
         }
     }
@@ -675,6 +691,10 @@ impl PlatformBuilder {
     pub fn run_with_module<T: Module>(self) -> ! {
         let (mut platform, mut constraints, module) = self.split();
 
+        #[cfg(feature = "board-rev-3-0")]
+        let _ = platform.subsystem_i2c.init();
+        let _ = platform.init_onewire(); // allowed to fail
+
         // TODO error handling
         if platform.load_network_configuration().is_err() {
             platform.log_error(ErrorFlags::NETWORK_LOAD);
@@ -684,8 +704,6 @@ impl PlatformBuilder {
                 platform.system.led_status.toggle_infallible();
             }
         }
-
-        let _ = platform.init_onewire(); // allowed to fail
 
         if platform.init_network().is_err() {
             platform.log_error(ErrorFlags::NETWORK_INIT);
@@ -810,8 +828,8 @@ impl
                 w5500_reset,
             },
 
+            #[cfg(feature = "board-rev-3-0")]
             subsystem_i2c: I2cBus {
-                #[cfg(all(not(feature = "board-rev-2"), feature = "i2c2"))]
                 i2c: {
                     BlockingI2c::i2c2(
                         p.I2C2,
@@ -834,14 +852,14 @@ impl
             led_red_tmp_error: gpioa.pa1.into_push_pull_output(&mut gpioa.crl),
             #[cfg(all(not(feature = "board-rev-2"), not(feature = "rtc")))]
             led_red_tmp_error: gpioc.pc15.into_push_pull_output(&mut gpioc.crh),
-            #[cfg(all(not(feature = "board-rev-2"), not(feature = "i2c2")))]
+            #[cfg(all(feature = "board-rev-3-0", not(feature = "i2c2")))]
             led_red_tmp_error: gpiob.pb10.into_push_pull_output(&mut gpiob.crh),
 
             #[cfg(feature = "board-rev-2")]
             led_yellow_boot_warning: gpioa.pa2.into_push_pull_output(&mut gpioa.crl),
             #[cfg(all(not(feature = "board-rev-2"), not(feature = "rtc")))]
             led_yellow_boot_warning: gpioc.pc14.into_push_pull_output(&mut gpioc.crh),
-            #[cfg(all(not(feature = "board-rev-2"), not(feature = "i2c2")))]
+            #[cfg(all(feature = "board-rev-3-0", not(feature = "i2c2")))]
             led_yellow_boot_warning: gpiob.pb11.into_push_pull_output(&mut gpiob.crh),
 
             #[cfg(feature = "board-rev-2")]
