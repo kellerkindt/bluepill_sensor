@@ -2,7 +2,9 @@ use crate::module::{
     Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
 };
 use crate::platform::{Action, DeviceInformation, HandleError, Platform};
+use crate::props::Property;
 use byteorder::{ByteOrder, NetworkEndian};
+use sensor_common::props::ModuleId;
 use sensor_common::{Bus, Format, Read, Request, Response, Type, Write};
 use stm32f1xx_hal::pac::USART1;
 use stm32f1xx_hal::serial::{Config, Rx, Serial, Tx};
@@ -114,6 +116,33 @@ impl EnvironmentalModule {
 
 impl Module for EnvironmentalModule {
     type Builder = EnvironmentalModuleBuilder;
+
+    const PROPERTIES: &'static [Property<Self>] = &[Property {
+        id: &[0x01],
+        name: Some("co2-ppm"),
+        ty: Type::F32,
+        read: property_read_fn! {
+            |platform, env: &mut EnvironmentalModule, write| {
+                match env.read_co2(&platform.system.info) {
+                    Ok(co2_value) => {
+                        write.write_all(&co2_value.to_be_bytes()[..])
+                    }
+                    Err(_) => {
+                        Err(sensor_common::Error::UnexpectedEOF)
+                    }
+                }
+            }
+        },
+        write: None,
+    }];
+
+    fn module_id(&self) -> ModuleId {
+        ModuleId {
+            group: 0,
+            id: 0,
+            ext: 0,
+        }
+    }
 
     fn update(&mut self, _platform: &mut Platform) {}
 }

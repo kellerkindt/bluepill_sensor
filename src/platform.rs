@@ -20,7 +20,7 @@ use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
 use onewire::{Device, OneWire};
 use panic_persist::get_panic_message_bytes;
-use sensor_common::props::PropertyId;
+use sensor_common::props::{ComponentRoot, PropertyId};
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
@@ -58,6 +58,7 @@ use w5500::net::Ipv4Addr;
 use w5500::udp::UdpSocket;
 use w5500::*;
 
+//mod stats;
 #[cfg(feature = "board-rev-3-0")]
 mod subsystem_i2c;
 mod subsystem_spi;
@@ -65,6 +66,7 @@ mod subsystem_spi;
 #[cfg(feature = "sntp")]
 mod sntp;
 
+//use stats::Stats;
 #[cfg(feature = "board-rev-3-0")]
 use subsystem_i2c::I2cBus;
 use subsystem_spi::SpiBus;
@@ -382,6 +384,50 @@ impl Platform {
                 }
                 Ok(Action::SendResponse)
             }
+            Request::ReadSpecified(id, Bus::Custom(255)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let value = self
+                    .sntp
+                    .current_time_millis(&self.system.info)
+                    .map(|d| (d / 1000) as f32)
+                    .unwrap_or(f32::NAN)
+                    .to_be_bytes();
+                response_writer.write_all(&value)?;
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(254)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let value = self
+                    .sntp
+                    .last_offset_millis
+                    .map(|d| (d / 1000) as f32)
+                    .unwrap_or(f32::NAN)
+                    .to_be_bytes();
+                response_writer.write_all(&value)?;
+                Ok(Action::SendResponse)
+            }
+            Request::ReadSpecified(id, Bus::Custom(253)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let value = self
+                    .sntp
+                    .last_update_millis
+                    .map(|d| d as f32)
+                    .unwrap_or(f32::NAN)
+                    .to_be_bytes();
+                response_writer.write_all(&value)?;
+                Ok(Action::SendResponse)
+            }
+            #[cfg(feature = "board-rev-3-0")]
+            Request::ReadSpecified(id, Bus::Custom(252)) => {
+                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
+                let value = self
+                    .subsystem_i2c
+                    .read_temperature_blocking()
+                    .unwrap_or(f32::NAN)
+                    .to_be_bytes();
+                response_writer.write_all(&value)?;
+                Ok(Action::SendResponse)
+            }
             Request::ReadSpecified(id, Bus::OneWire) => {
                 Response::Ok(id, Format::AddressValuePairs(Type::Bytes(8), Type::F32))
                     .write(response_writer)?;
@@ -436,22 +482,75 @@ impl Platform {
                         }
                     }
                 }
-                module.try_handle_request(self, request, request_payload, response_writer)
+
+                let module_id = module.module_id();
+                for property in M::PROPERTIES {
+                    let prefix_len = 4;
+                    let id_len = property.id.len().min((u8::MAX - prefix_len) as usize) as u8;
+                    let len = prefix_len + id_len;
+
+                    response_writer.write_u8(len)?;
+                    response_writer.write_u8(ComponentRoot::Module as u8)?;
+                    response_writer.write_u8(module_id.group)?;
+                    response_writer.write_u8(module_id.id)?;
+                    response_writer.write_u8(module_id.ext)?;
+                    response_writer.write_all(&property.id[..id_len as usize])?;
+
+                    if matches!(request, Request::ListComponentsAndNames(_)) {
+                        if let Some(name) = property.name.as_ref() {
+                            let bytes = name.as_bytes();
+                            let len = bytes.len().min(u8::MAX as usize) as u8;
+                            response_writer.write_u8(len)?;
+                            response_writer.write_all(&bytes[..len as usize])?;
+                        } else {
+                            response_writer.write_u8(0x00)?;
+                        }
+                    }
+                }
+
+                Ok(Action::SendResponse)
             }
             Request::RetrieveProperty(id, len) => {
                 let mut pid = [0u8; u8::MAX as usize];
                 for i in 0..len {
                     pid[i as usize] = request_payload.read_u8()?;
                 }
-                for property in PROPERTIES {
-                    if property.id.len() as u8 == len && property.id == &pid[..len as usize] {
-                        if let Some(read_fn) = property.read.as_ref() {
-                            Response::Ok(id, Format::ValueOnly(property.ty))
-                                .write(response_writer)?;
-                            read_fn(self, response_writer)?;
-                            return Ok(Action::SendResponse);
-                        } else {
-                            break;
+
+                if pid.len() > 0 {
+                    if pid[0] != ComponentRoot::Module as u8 {
+                        for property in PROPERTIES {
+                            if property.id.len() as u8 == len && property.id == &pid[..len as usize]
+                            {
+                                if let Some(read_fn) = property.read.as_ref() {
+                                    Response::Ok(id, Format::ValueOnly(property.ty))
+                                        .write(response_writer)?;
+                                    read_fn(self, &mut (), response_writer)?;
+                                    return Ok(Action::SendResponse);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    } else if pid.len() > 4 {
+                        let module_id = module.module_id();
+                        if &pid[1..=3] == &[module_id.group, module_id.id, module_id.ext] {
+                            let pid = &pid[4..];
+                            let len = len - 4;
+
+                            for property in M::PROPERTIES {
+                                if property.id.len() as u8 == len
+                                    && property.id == &pid[..len as usize]
+                                {
+                                    if let Some(read_fn) = property.read.as_ref() {
+                                        Response::Ok(id, Format::ValueOnly(property.ty))
+                                            .write(response_writer)?;
+                                        read_fn(self, &mut *module, response_writer)?;
+                                        return Ok(Action::SendResponse);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

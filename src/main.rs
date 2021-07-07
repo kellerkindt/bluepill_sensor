@@ -13,6 +13,9 @@ use panic_persist as _;
 #[macro_use(block)]
 extern crate nb;
 
+#[macro_use]
+mod props;
+
 // mod am2302;
 mod ds93c46;
 mod io_utils;
@@ -21,7 +24,6 @@ mod platform;
 mod system;
 // mod sht1x;
 mod cnf;
-mod props;
 
 #[entry]
 fn main() -> ! {

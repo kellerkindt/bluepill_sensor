@@ -8,6 +8,9 @@ compile_error!("Missing board revision selection (board-rev1, board-rev-2, board
 #[macro_use(block)]
 extern crate nb;
 
+#[macro_use]
+pub mod props;
+
 // pub mod am2302;
 pub mod ds93c46;
 pub mod io_utils;
@@ -16,4 +19,3 @@ pub mod platform;
 pub mod system;
 // pub mod sht1x;
 pub mod cnf;
-pub mod props;

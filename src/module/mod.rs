@@ -25,7 +25,9 @@ pub use nop::NopModule as FeaturedModule;
 use crate::platform::Action;
 use crate::platform::HandleError;
 use crate::platform::Platform;
+use crate::props::Property;
 use core::convert::Infallible;
+use sensor_common::props::ModuleId;
 use sensor_common::Read;
 use sensor_common::Request;
 use sensor_common::Write;
@@ -65,8 +67,12 @@ pub trait ModuleBuilder<M: Module<Builder = Self>>: Sized {
     ) -> M;
 }
 
-pub trait Module: RequestHandler + Sized {
+pub trait Module: RequestHandler + Sized + 'static {
     type Builder: ModuleBuilder<Self>;
+
+    const PROPERTIES: &'static [Property<Self>];
+
+    fn module_id(&self) -> ModuleId;
 
     fn update(&mut self, platform: &mut Platform);
 }
