@@ -13,6 +13,7 @@ use stm32f1xx_hal::i2c;
 use stm32f1xx_hal::i2c::BlockingI2c;
 use stm32f1xx_hal::time::U32Ext;
 
+#[deprecated]
 #[allow(unused)]
 mod expander {
     pub const P7: u8 = 0b1 << 7;
@@ -520,7 +521,7 @@ impl PumpState {
     }
 
     pub fn should_pump(&self) -> bool {
-        matches!(self, PumpState::Pumping {.. })
+        matches!(self, PumpState::Pumping { .. })
     }
 
     pub fn pre_failure_since(&self) -> Option<u64> {

@@ -21,6 +21,7 @@ mod platform;
 mod system;
 // mod sht1x;
 mod cnf;
+mod props;
 
 #[entry]
 fn main() -> ! {

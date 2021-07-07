@@ -2,6 +2,7 @@ use crate::cnf::NetworkConfiguration;
 use crate::ds93c46::DS93C46;
 use crate::io_utils::{InputPinInfallible, OutputPinInfallible, ToggleableOutputPinInfallible};
 use crate::module::{Module, ModuleBuilder, ModulePeripherals, PlatformConstraints};
+use crate::props::PROPERTIES;
 use crate::system::System;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
@@ -19,6 +20,7 @@ use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
 use onewire::{Device, OneWire};
 use panic_persist::get_panic_message_bytes;
+use sensor_common::props::PropertyId;
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
@@ -410,6 +412,51 @@ impl Platform {
                 )?;
                 Response::Ok(id, Format::Empty).write(response_writer)?;
                 Ok(Action::SendResponseAndReset)
+            }
+            Request::ListComponents(id) | Request::ListComponentsAndNames(id) => {
+                Response::Ok(
+                    id,
+                    if matches!(request, Request::ListComponentsAndNames(_)) {
+                        Format::AddressValuePairs(Type::PropertyId, Type::DynString)
+                    } else {
+                        Format::AddressOnly(Type::PropertyId)
+                    },
+                )
+                .write(response_writer)?;
+                for property in PROPERTIES {
+                    PropertyId::from_slice(property.id).write(response_writer)?;
+                    if matches!(request, Request::ListComponentsAndNames(_)) {
+                        if let Some(name) = property.name.as_ref() {
+                            let bytes = name.as_bytes();
+                            let len = bytes.len().min(u8::MAX as usize) as u8;
+                            response_writer.write_u8(len)?;
+                            response_writer.write_all(&bytes[..len as usize])?;
+                        } else {
+                            response_writer.write_u8(0x00)?;
+                        }
+                    }
+                }
+                module.try_handle_request(self, request, request_payload, response_writer)
+            }
+            Request::RetrieveProperty(id, len) => {
+                let mut pid = [0u8; u8::MAX as usize];
+                for i in 0..len {
+                    pid[i as usize] = request_payload.read_u8()?;
+                }
+                for property in PROPERTIES {
+                    if property.id.len() as u8 == len && property.id == &pid[..len as usize] {
+                        if let Some(read_fn) = property.read.as_ref() {
+                            Response::Ok(id, Format::ValueOnly(property.ty))
+                                .write(response_writer)?;
+                            read_fn(self, response_writer)?;
+                            return Ok(Action::SendResponse);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                Response::NotAvailable(id).write(response_writer)?;
+                Ok(Action::SendResponse)
             }
             Request::RetrieveErrorDump(id) => {
                 if let Some(msg) = &self.error_dump {

@@ -16,3 +16,4 @@ pub mod platform;
 pub mod system;
 // pub mod sht1x;
 pub mod cnf;
+pub mod props;
