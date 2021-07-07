@@ -95,7 +95,7 @@ pub const PROPERTIES: &'static [Property<()>] = &[
     },
     Property {
         id: &[ComponentRoot::Device as u8, DeviceComponent::Uptime as u8],
-        name: Some("Device uptime"),
+        name: Some("device-uptime"),
         ty: Type::U64,
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.uptime_ms().to_be_bytes())

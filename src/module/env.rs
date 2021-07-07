@@ -139,7 +139,7 @@ impl Module for EnvironmentalModule {
     fn module_id(&self) -> ModuleId {
         ModuleId {
             group: 0,
-            id: 0,
+            id: 3,
             ext: 0,
         }
     }

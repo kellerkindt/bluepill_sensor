@@ -4,8 +4,10 @@ use crate::module::{
 };
 use crate::platform::HandleError;
 use crate::platform::{Action, Platform};
+use crate::props::Property;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
+use sensor_common::props::ModuleId;
 use sensor_common::Bus;
 use sensor_common::Format;
 use sensor_common::Response;
@@ -69,6 +71,83 @@ pub struct ElectricityMeter {
 
 impl Module for ElectricityMeter {
     type Builder = ECMBuilder;
+    const PROPERTIES: &'static [Property<Self>] = &[
+        Property {
+            id: &[0x00, 0x00],
+            name: Some("garage-open-since"),
+            ty: Type::U64,
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    write.write_all(&module.garage_open_since.map(|open_since| {
+                        let time_us_diff = time.saturating_sub(open_since);
+                        time_us_diff as f32 / 1_000_000_f32
+                    }).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x01],
+            name: Some("ltfm1"),
+            ty: Type::F32,
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    let min_age = time.saturating_sub(300_000_000); // 5min;
+                    write.write_all(&module.ltfm1.value(time, min_age).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x02],
+            name: Some("ltfm2"),
+            ty: Type::F32,
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    let min_age = time.saturating_sub(300_000_000); // 5min;
+                    write.write_all(&module.ltfm2.value(time, min_age).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x03],
+            name: Some("ltfm3"),
+            ty: Type::F32,
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    let min_age = time.saturating_sub(300_000_000); // 5min;
+                    write.write_all(&module.ltfm3.value(time, min_age).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x04],
+            name: Some("ltfm4"),
+            ty: Type::F32,
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    let min_age = time.saturating_sub(300_000_000); // 5min;
+                    write.write_all(&module.ltfm4.value(time, min_age).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
+    ];
+
+    fn module_id(&self) -> ModuleId {
+        ModuleId {
+            group: 0,
+            id: 1,
+            ext: 0,
+        }
+    }
 
     fn update(&mut self, platform: &mut Platform) {
         let time_us = platform.system.info.uptime_us();
