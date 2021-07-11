@@ -35,6 +35,10 @@ impl Handle {
         self.last_offset_millis
     }
 
+    pub fn last_update_millis(&self) -> Option<u64> {
+        self.last_update_millis
+    }
+
     pub fn current_time_millis(&self, info: &DeviceInformation) -> Option<u64> {
         self.last_offset_millis()
             .map(|millis| millis + info.uptime_ms())

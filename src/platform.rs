@@ -131,7 +131,7 @@ pub struct Platform {
     error_history: ErrorFlags,
 
     #[cfg(feature = "sntp")]
-    sntp: SntpHandle,
+    pub(super) sntp: SntpHandle,
 
     #[cfg(feature = "board-rev-3-0")]
     subsystem_i2c: I2cBus,
