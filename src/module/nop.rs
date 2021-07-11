@@ -2,8 +2,7 @@ use crate::module::{
     Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
 };
 use crate::platform::{Action, HandleError, Platform};
-use crate::props::Property;
-use sensor_common::props::ModuleId;
+use sensor_common::props::{ModuleId, Property};
 use sensor_common::{Read, Request, Write};
 
 pub struct NopModuleBuilder;
@@ -22,7 +21,7 @@ pub struct NopModule;
 
 impl Module for NopModule {
     type Builder = NopModuleBuilder;
-    const PROPERTIES: &'static [Property<Self>] = &[];
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[];
 
     fn module_id(&self) -> ModuleId {
         ModuleId {

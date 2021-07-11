@@ -1,6 +1,8 @@
 use crate::platform::Platform;
-use sensor_common::props::{ComponentRoot, CpuComponent, DeviceComponent};
-use sensor_common::{Error, Read, Type, Write};
+use sensor_common::props::{
+    ComponentRoot, CpuComponent, DeviceComponent, Property, QueryComplexity,
+};
+use sensor_common::{Type, Write};
 
 #[macro_export]
 macro_rules! property_read_fn {
@@ -19,23 +21,16 @@ macro_rules! property_read_fn {
     };
 }
 
-pub struct Property<T> {
-    pub id: &'static [u8],
-    pub name: Option<&'static str>,
-    pub ty: Type,
-    pub read: Option<fn(&mut Platform, &mut T, &mut dyn Write) -> Result<usize, Error>>,
-    pub write: Option<fn(&mut Platform, &mut T, &mut dyn Read) -> Result<usize, Error>>,
-}
-
-pub const PROPERTIES: &'static [Property<()>] = &[
+pub const PROPERTIES: &'static [Property<Platform, ()>] = &[
     Property {
         id: &[
             ComponentRoot::Device as u8,
             DeviceComponent::Cpu as u8,
             CpuComponent::Id as u8,
         ],
-        name: Some("cpu-id"),
-        ty: Type::U32,
+        type_hint: Some(Type::U32),
+        complexity: QueryComplexity::low(),
+        description: Some("cpu-id"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.cpu_id().to_be_bytes())
         },
@@ -47,8 +42,9 @@ pub const PROPERTIES: &'static [Property<()>] = &[
             DeviceComponent::Cpu as u8,
             CpuComponent::Implementer as u8,
         ],
-        name: Some("cpu-implementer"),
-        ty: Type::U8,
+        type_hint: Some(Type::U8),
+        complexity: QueryComplexity::low(),
+        description: Some("cpu-implementer"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.cpu_implementer().to_be_bytes())
         },
@@ -60,8 +56,9 @@ pub const PROPERTIES: &'static [Property<()>] = &[
             DeviceComponent::Cpu as u8,
             CpuComponent::Variant as u8,
         ],
-        name: Some("cpu-variant"),
-        ty: Type::U8,
+        type_hint: Some(Type::U8),
+        complexity: QueryComplexity::low(),
+        description: Some("cpu-variant"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.cpu_variant().to_be_bytes())
         },
@@ -73,8 +70,9 @@ pub const PROPERTIES: &'static [Property<()>] = &[
             DeviceComponent::Cpu as u8,
             CpuComponent::PartNumber as u8,
         ],
-        name: Some("cpu-partnumber"),
-        ty: Type::U16,
+        type_hint: Some(Type::U16),
+        complexity: QueryComplexity::low(),
+        description: Some("cpu-partnumber"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.cpu_partnumber().to_be_bytes())
         },
@@ -86,8 +84,9 @@ pub const PROPERTIES: &'static [Property<()>] = &[
             DeviceComponent::Cpu as u8,
             CpuComponent::Revision as u8,
         ],
-        name: Some("cpu-revision"),
-        ty: Type::U8,
+        type_hint: Some(Type::U8),
+        complexity: QueryComplexity::low(),
+        description: Some("cpu-revision"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.cpu_revision().to_be_bytes())
         },
@@ -95,8 +94,9 @@ pub const PROPERTIES: &'static [Property<()>] = &[
     },
     Property {
         id: &[ComponentRoot::Device as u8, DeviceComponent::Uptime as u8],
-        name: Some("device-uptime"),
-        ty: Type::U64,
+        type_hint: Some(Type::U64),
+        complexity: QueryComplexity::low(),
+        description: Some("device-uptime"),
         read: property_read_fn! {
             |platform, write| write.write_all(&platform.system.info.uptime_ms().to_be_bytes())
         },

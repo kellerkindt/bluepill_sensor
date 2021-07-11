@@ -4,10 +4,10 @@ use crate::module::{
 };
 use crate::platform::HandleError;
 use crate::platform::{Action, Platform};
-use crate::props::Property;
 use byteorder::ByteOrder;
 use byteorder::NetworkEndian;
-use sensor_common::props::ModuleId;
+use sensor_common::props::Property;
+use sensor_common::props::{ModuleId, QueryComplexity};
 use sensor_common::Bus;
 use sensor_common::Format;
 use sensor_common::Response;
@@ -71,11 +71,14 @@ pub struct ElectricityMeter {
 
 impl Module for ElectricityMeter {
     type Builder = ECMBuilder;
-    const PROPERTIES: &'static [Property<Self>] = &[
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[
         Property {
             id: &[0x00, 0x00],
-            name: Some("garage-open-since"),
-            ty: Type::U64,
+            type_hint: Some(Type::U64),
+            description: Some("garage-open-since"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
             read: property_read_fn! {
                 |platform, module: &mut ElectricityMeter, write| {
                     let time = platform.system.info.uptime_us();
@@ -89,8 +92,11 @@ impl Module for ElectricityMeter {
         },
         Property {
             id: &[0x00, 0x01],
-            name: Some("ltfm1"),
-            ty: Type::F32,
+            type_hint: Some(Type::F32),
+            description: Some("ltfm1"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
             read: property_read_fn! {
                 |platform, module: &mut ElectricityMeter, write| {
                     let time = platform.system.info.uptime_us();
@@ -102,8 +108,11 @@ impl Module for ElectricityMeter {
         },
         Property {
             id: &[0x00, 0x02],
-            name: Some("ltfm2"),
-            ty: Type::F32,
+            type_hint: Some(Type::F32),
+            description: Some("ltfm2"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
             read: property_read_fn! {
                 |platform, module: &mut ElectricityMeter, write| {
                     let time = platform.system.info.uptime_us();
@@ -115,8 +124,11 @@ impl Module for ElectricityMeter {
         },
         Property {
             id: &[0x00, 0x03],
-            name: Some("ltfm3"),
-            ty: Type::F32,
+            type_hint: Some(Type::F32),
+            description: Some("ltfm3"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
             read: property_read_fn! {
                 |platform, module: &mut ElectricityMeter, write| {
                     let time = platform.system.info.uptime_us();
@@ -128,8 +140,11 @@ impl Module for ElectricityMeter {
         },
         Property {
             id: &[0x00, 0x04],
-            name: Some("ltfm4"),
-            ty: Type::F32,
+            type_hint: Some(Type::F32),
+            description: Some("ltfm4"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
             read: property_read_fn! {
                 |platform, module: &mut ElectricityMeter, write| {
                     let time = platform.system.info.uptime_us();

@@ -20,7 +20,7 @@ use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
 use onewire::{Device, OneWire};
 use panic_persist::get_panic_message_bytes;
-use sensor_common::props::{ComponentRoot, PropertyId};
+use sensor_common::props::{ComponentRoot, PropertyId, PropertyReportV1};
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
@@ -459,27 +459,22 @@ impl Platform {
                 Response::Ok(id, Format::Empty).write(response_writer)?;
                 Ok(Action::SendResponseAndReset)
             }
-            Request::ListComponents(id) | Request::ListComponentsAndNames(id) => {
+            Request::ListComponents(id) | Request::ListComponentsWithReportV1(id) => {
                 Response::Ok(
                     id,
-                    if matches!(request, Request::ListComponentsAndNames(_)) {
-                        Format::AddressValuePairs(Type::PropertyId, Type::DynString)
+                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
+                        Format::ValueOnly(Type::DynListPropertyReportV1)
                     } else {
                         Format::AddressOnly(Type::PropertyId)
                     },
                 )
                 .write(response_writer)?;
+
                 for property in PROPERTIES {
-                    PropertyId::from_slice(property.id).write(response_writer)?;
-                    if matches!(request, Request::ListComponentsAndNames(_)) {
-                        if let Some(name) = property.name.as_ref() {
-                            let bytes = name.as_bytes();
-                            let len = bytes.len().min(u8::MAX as usize) as u8;
-                            response_writer.write_u8(len)?;
-                            response_writer.write_all(&bytes[..len as usize])?;
-                        } else {
-                            response_writer.write_u8(0x00)?;
-                        }
+                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
+                        PropertyReportV1::from(property).write(response_writer)?;
+                    } else {
+                        PropertyId::from_slice(property.id).write(response_writer)?;
                     }
                 }
 
@@ -490,21 +485,16 @@ impl Platform {
                     let len = prefix_len + id_len;
 
                     response_writer.write_u8(len)?;
-                    response_writer.write_u8(ComponentRoot::Module as u8)?;
-                    response_writer.write_u8(module_id.group)?;
-                    response_writer.write_u8(module_id.id)?;
-                    response_writer.write_u8(module_id.ext)?;
+                    response_writer.write_all(&[
+                        ComponentRoot::Module as u8,
+                        module_id.group,
+                        module_id.id,
+                        module_id.ext,
+                    ])?;
                     response_writer.write_all(&property.id[..id_len as usize])?;
 
-                    if matches!(request, Request::ListComponentsAndNames(_)) {
-                        if let Some(name) = property.name.as_ref() {
-                            let bytes = name.as_bytes();
-                            let len = bytes.len().min(u8::MAX as usize) as u8;
-                            response_writer.write_u8(len)?;
-                            response_writer.write_all(&bytes[..len as usize])?;
-                        } else {
-                            response_writer.write_u8(0x00)?;
-                        }
+                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
+                        PropertyReportV1::from(property).write_no_id(response_writer)?;
                     }
                 }
 
@@ -522,8 +512,13 @@ impl Platform {
                             if property.id.len() as u8 == len && property.id == &pid[..len as usize]
                             {
                                 if let Some(read_fn) = property.read.as_ref() {
-                                    Response::Ok(id, Format::ValueOnly(property.ty))
-                                        .write(response_writer)?;
+                                    Response::Ok(
+                                        id,
+                                        Format::ValueOnly(
+                                            property.type_hint.unwrap_or(Type::DynBytes),
+                                        ),
+                                    )
+                                    .write(response_writer)?;
                                     read_fn(self, &mut (), response_writer)?;
                                     return Ok(Action::SendResponse);
                                 } else {
@@ -542,8 +537,13 @@ impl Platform {
                                     && property.id == &pid[..len as usize]
                                 {
                                     if let Some(read_fn) = property.read.as_ref() {
-                                        Response::Ok(id, Format::ValueOnly(property.ty))
-                                            .write(response_writer)?;
+                                        Response::Ok(
+                                            id,
+                                            Format::ValueOnly(
+                                                property.type_hint.unwrap_or(Type::DynBytes),
+                                            ),
+                                        )
+                                        .write(response_writer)?;
                                         read_fn(self, &mut *module, response_writer)?;
                                         return Ok(Action::SendResponse);
                                     } else {

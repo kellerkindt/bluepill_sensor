@@ -2,9 +2,10 @@ use crate::module::{
     Module, ModuleBuilder, ModulePeripherals, PlatformConstraints, RequestHandler,
 };
 use crate::platform::{Action, DeviceInformation, HandleError, Platform};
-use crate::props::Property;
 use byteorder::{ByteOrder, NetworkEndian};
-use sensor_common::props::ModuleId;
+use core::num::NonZeroU16;
+use sensor_common::props::Property;
+use sensor_common::props::{ModuleId, QueryComplexity};
 use sensor_common::{Bus, Format, Read, Request, Response, Type, Write};
 use stm32f1xx_hal::pac::USART1;
 use stm32f1xx_hal::serial::{Config, Rx, Serial, Tx};
@@ -65,7 +66,7 @@ pub struct EnvironmentalModule {
 }
 
 impl EnvironmentalModule {
-    pub fn read_co2(&mut self, info: &DeviceInformation) -> Result<f32, ()> {
+    pub fn read_co2(&mut self, info: &DeviceInformation) -> Result<u16, ()> {
         use embedded_hal::prelude::*;
         const START_BYTE: u8 = 0xFF;
         const COMMAND: u8 = 0x86;
@@ -105,8 +106,7 @@ impl EnvironmentalModule {
                 let checksum: u8 = 0xFF_u8 + (!(&value[1..=7]).iter().sum::<u8>() + 1_u8) + 1_u8;
 
                 if checksum == value[8] && value[0] == START_BYTE && value[1] == COMMAND {
-                    let value = NetworkEndian::read_u16(&value[2..4]) as f32;
-                    Ok(value)
+                    Ok(NetworkEndian::read_u16(&value[2..4]))
                 } else {
                     Err(())
                 }
@@ -117,10 +117,14 @@ impl EnvironmentalModule {
 impl Module for EnvironmentalModule {
     type Builder = EnvironmentalModuleBuilder;
 
-    const PROPERTIES: &'static [Property<Self>] = &[Property {
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[Property {
         id: &[0x01],
-        name: Some("co2-ppm"),
-        ty: Type::F32,
+        type_hint: Some(Type::U16),
+        description: Some("co2-ppm"),
+        complexity: QueryComplexity::Low {
+            // TODO check again in datasheet
+            estimated_millis: NonZeroU16::new(20),
+        },
         read: property_read_fn! {
             |platform, env: &mut EnvironmentalModule, write| {
                 match env.read_co2(&platform.system.info) {
@@ -159,7 +163,7 @@ impl RequestHandler for EnvironmentalModule {
             match self.read_co2(&platform.system.info) {
                 Ok(co2_value) => {
                     Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                    response_writer.write_all(&co2_value.to_be_bytes()[..])?;
+                    response_writer.write_all(&(co2_value as f32).to_be_bytes()[..])?;
                 }
                 Err(_) => {
                     Response::NotAvailable(id).write(response_writer)?;

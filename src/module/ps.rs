@@ -2,12 +2,12 @@ use crate::module::{
     Module, ModuleBuilder, ModulePeripherals, MutRef, PlatformConstraints, RequestHandler,
 };
 use crate::platform::{Action, HandleError, Platform};
-use crate::props::Property;
 use ads1x1x::{FullScaleRange, SlaveAddr};
 use arrayvec::ArrayString;
 use byteorder::{ByteOrder, NetworkEndian};
 use embedded_hal::adc::OneShot;
 use sensor_common::props::ModuleId;
+use sensor_common::props::Property;
 use sensor_common::{Bus, Format, Read, Request, Response, Type, Write};
 use stm32f1xx_hal::gpio::gpiob::*;
 use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
@@ -195,7 +195,7 @@ impl PumpingSystem {
 
 impl Module for PumpingSystem {
     type Builder = PSBuilder;
-    const PROPERTIES: &'static [Property<Self>] = &[];
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[];
 
     fn module_id(&self) -> ModuleId {
         ModuleId {
