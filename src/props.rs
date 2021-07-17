@@ -249,7 +249,7 @@ pub const PROPERTIES: &'static [Property<Platform, ()>] = &[
         ],
         type_hint: Some(Type::F32),
         complexity: QueryComplexity::low(),
-        description: Some("temp-value"),
+        description: Some("platform-temp"),
         read: property_read_fn! {
             |platform, write| {
                 let value = platform

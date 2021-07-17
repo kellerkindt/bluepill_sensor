@@ -134,7 +134,7 @@ pub struct Platform {
     pub(super) sntp: SntpHandle,
 
     #[cfg(feature = "board-rev-3-0")]
-    subsystem_i2c: I2cBus,
+    pub(crate) subsystem_i2c: I2cBus,
     subsystem_spi: SpiBus,
 }
 
