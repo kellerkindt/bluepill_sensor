@@ -212,7 +212,7 @@ impl RequestHandler for ElectricityMeter {
         response_writer: &mut impl Write,
     ) -> Result<Action, HandleError> {
         match request {
-            Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 250 && cid <= 254 => {
+            Request::ReadSpecified(id, Bus::Custom(cid)) if cid >= 250 && cid <= 255 => {
                 let time = platform.system.info.uptime_us();
                 let min_age = time.saturating_sub(300_000_000); // 5min;
                 let result = match cid {
