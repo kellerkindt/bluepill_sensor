@@ -16,8 +16,8 @@ use sensor_common::{Read, Request, Write};
 use stm32f1xx_hal::gpio::gpioa::PA12;
 use stm32f1xx_hal::gpio::gpioa::PA15;
 use stm32f1xx_hal::gpio::gpioa::PA8;
-use stm32f1xx_hal::gpio::gpiob::PB3;
 use stm32f1xx_hal::gpio::gpiob::PB4;
+use stm32f1xx_hal::gpio::gpiob::{PB3, PB5};
 use stm32f1xx_hal::gpio::Input;
 use stm32f1xx_hal::gpio::{Floating, PullUp};
 
@@ -34,6 +34,7 @@ impl ModuleBuilder<ElectricityMeter> for ECMBuilder {
             peripherals.pin_39,
             peripherals.pin_40,
         );
+        let pb5 = peripherals.pin_41;
 
         ElectricityMeter {
             pa8: peripherals
@@ -45,12 +46,14 @@ impl ModuleBuilder<ElectricityMeter> for ECMBuilder {
             pa15: pa15.into_floating_input(&mut constraints.gpioa_crh),
             pb3: pb3.into_floating_input(&mut constraints.gpiob_crl),
             pb4: pb4.into_floating_input(&mut constraints.gpiob_crl),
+            pb5: pb5.into_floating_input(&mut constraints.gpiob_crl),
 
             garage_open_since: None,
             ltfm1: LongTimeFreqMeasurement::new(),
             ltfm2: LongTimeFreqMeasurement::new(),
             ltfm3: LongTimeFreqMeasurement::new(),
             ltfm4: LongTimeFreqMeasurement::new(),
+            ltfm5: LongTimeFreqMeasurement::new(),
         }
     }
 }
@@ -61,12 +64,14 @@ pub struct ElectricityMeter {
     pub pa15: PA15<Input<Floating>>,
     pub pb3: PB3<Input<Floating>>,
     pub pb4: PB4<Input<Floating>>,
+    pub pb5: PB5<Input<Floating>>,
 
     pub garage_open_since: Option<u64>,
     pub ltfm1: LongTimeFreqMeasurement,
     pub ltfm2: LongTimeFreqMeasurement,
     pub ltfm3: LongTimeFreqMeasurement,
     pub ltfm4: LongTimeFreqMeasurement,
+    pub ltfm5: LongTimeFreqMeasurement,
 }
 
 impl Module for ElectricityMeter {
@@ -154,6 +159,22 @@ impl Module for ElectricityMeter {
             },
             write: None,
         },
+        Property {
+            id: &[0x00, 0x05],
+            type_hint: Some(Type::F32),
+            description: Some("ltfm5"),
+            complexity: QueryComplexity::Low {
+                estimated_millis: None,
+            },
+            read: property_read_fn! {
+                |platform, module: &mut ElectricityMeter, write| {
+                    let time = platform.system.info.uptime_us();
+                    let min_age = time.saturating_sub(300_000_000); // 5min;
+                    write.write_all(&module.ltfm5.value(time, min_age).unwrap_or_default().to_be_bytes())
+                }
+            },
+            write: None,
+        },
     ];
 
     fn module_id(&self) -> ModuleId {
@@ -170,6 +191,7 @@ impl Module for ElectricityMeter {
         self.ltfm2.update(time_us, self.pa15.is_high_infallible());
         self.ltfm3.update(time_us, self.pb3.is_high_infallible());
         self.ltfm4.update(time_us, self.pb4.is_high_infallible());
+        self.ltfm5.update(time_us, self.pb5.is_high_infallible());
 
         if self.pa8.is_high_infallible() {
             if self.garage_open_since.is_none() {
@@ -202,6 +224,7 @@ impl RequestHandler for ElectricityMeter {
                     252 => self.ltfm2.value(time, min_age),
                     253 => self.ltfm3.value(time, min_age),
                     254 => self.ltfm4.value(time, min_age),
+                    255 => self.ltfm5.value(time, min_age),
                     _ => unreachable!(),
                 }
                 .unwrap_or(0f32);
