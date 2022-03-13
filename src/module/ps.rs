@@ -6,8 +6,8 @@ use ads1x1x::{FullScaleRange, SlaveAddr};
 use arrayvec::ArrayString;
 use byteorder::{ByteOrder, NetworkEndian};
 use embedded_hal::adc::OneShot;
-use sensor_common::props::ModuleId;
 use sensor_common::props::Property;
+use sensor_common::props::{ModuleId, QueryComplexity};
 use sensor_common::{Bus, Format, Read, Request, Response, Type, Write};
 use stm32f1xx_hal::gpio::gpiob::*;
 use stm32f1xx_hal::gpio::{Alternate, OpenDrain};
@@ -195,7 +195,20 @@ impl PumpingSystem {
 
 impl Module for PumpingSystem {
     type Builder = PSBuilder;
-    const PROPERTIES: &'static [Property<Platform, Self>] = &[];
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[Property {
+        id: &[0x00, 0x00],
+        type_hint: Some(Type::DynString),
+        description: Some("pump-state"),
+        complexity: QueryComplexity::low(),
+        read: property_read_fn! {
+            |platform, module: &mut PumpingSystem, write| {
+                let str = module.pump_state.as_str().as_bytes();
+                let len = str.len().max(u8::MAX as usize) as u8;
+                Ok(write.write_u8(len)? + write.write_all(&str[..len])?)
+            }
+        },
+        write: None,
+    }];
 
     fn module_id(&self) -> ModuleId {
         ModuleId {
@@ -425,6 +438,16 @@ impl PumpState {
             timestamp_ms,
             pump_cycle: 0,
             prev_pre_fails: 0,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PumpState::NoticingFill { .. } => "noticing-fill",
+            PumpState::Pumping { .. } => "pumping",
+            PumpState::Cooldown { .. } => "cooldown",
+            PumpState::PreFail { .. } => "pre-fail",
+            PumpState::Failure { .. } => "failure",
         }
     }
 
