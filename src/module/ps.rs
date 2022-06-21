@@ -129,10 +129,10 @@ impl PumpingSystem {
         let mut adc = ads1x1x::Ads1x1x::new_ads1115(MutRef(&mut self.i2c), SlaveAddr::new_gnd());
         adc.set_full_scale_range(FullScaleRange::Within4_096V)?;
         Ok([
-            block!(adc.read(&mut ads1x1x::channel::SingleA0))? as f32 * 0.125_f32 / 1024_f32,
-            block!(adc.read(&mut ads1x1x::channel::SingleA1))? as f32 * 0.125_f32 / 1024_f32,
-            block!(adc.read(&mut ads1x1x::channel::SingleA2))? as f32 * 0.125_f32 / 1024_f32,
-            block!(adc.read(&mut ads1x1x::channel::SingleA3))? as f32 * 0.125_f32 / 1024_f32,
+            block!(adc.read(&mut ads1x1x::channel::SingleA0))? as f32 / 4096_f32,
+            block!(adc.read(&mut ads1x1x::channel::SingleA1))? as f32 / 4096_f32,
+            block!(adc.read(&mut ads1x1x::channel::SingleA2))? as f32 / 4096_f32,
+            block!(adc.read(&mut ads1x1x::channel::SingleA3))? as f32 / 4096_f32,
         ])
     }
 
@@ -195,20 +195,165 @@ impl PumpingSystem {
 
 impl Module for PumpingSystem {
     type Builder = PSBuilder;
-    const PROPERTIES: &'static [Property<Platform, Self>] = &[Property {
-        id: &[0x00, 0x00],
-        type_hint: Some(Type::DynString),
-        description: Some("pump-state"),
-        complexity: QueryComplexity::low(),
-        read: property_read_fn! {
-            |platform, module: &mut PumpingSystem, write| {
-                let str = module.pump_state.as_str().as_bytes();
-                let len = str.len().max(u8::MAX as usize) as u8;
-                Ok(write.write_u8(len)? + write.write_all(&str[..len])?)
-            }
+    const PROPERTIES: &'static [Property<Platform, Self>] = &[
+        Property {
+            id: &[0x00, 0x00],
+            type_hint: Some(Type::DynString),
+            description: Some("pump-state"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    let str = module.pump_state.as_str().as_bytes();
+                    let len = str.len().min(u8::MAX as usize) as u8;
+                    Ok(write.write_u8(len)? + write.write_all(&str[..len as usize])?)
+                }
+            },
+            write: None,
         },
-        write: None,
-    }];
+        Property {
+            id: &[0x00, 0x01],
+            type_hint: Some(Type::I64),
+            description: Some("pump-state-timestamp"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    let timestamp_ms = platform.system.info.uptime_ms();
+                    write.write_all(
+                        &match module.pump_state_timestamp {
+                            OnOffTimestamp::Off(time) => timestamp_ms.saturating_sub(time) as i64,
+                            OnOffTimestamp::On(time) => {
+                                timestamp_ms.saturating_sub(time) as i64 * -1
+                            }
+                        }.to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x02],
+            type_hint: Some(Type::U64),
+            description: Some("alert-since-timestamp"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .alert_active_since_timestamp_ms
+                            .map(|t| platform.system.info.uptime_ms().saturating_sub(t))
+                            .unwrap_or(0).to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x03],
+            type_hint: Some(Type::U64),
+            description: Some("warn-since-timestamp"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .warn_since_timestamp_ms
+                            .map(|t| platform.system.info.uptime_ms().saturating_sub(t))
+                            .unwrap_or(0)
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x00, 0x04],
+            type_hint: Some(Type::U64),
+            description: Some("warn-since-timestamp-burst-window"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .warn_since_timestamp_ms
+                            .filter(|t| {
+                                platform.system.info.uptime_ms().saturating_sub(*t) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS
+                            })
+                            .unwrap_or(0)
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x00],
+            type_hint: Some(Type::F32),
+            description: Some("adc0-fill"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .load_all_adc_values()
+                            .map_err(|_| sensor_common::Error::UnexpectedEOF)?[0]
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x01],
+            type_hint: Some(Type::F32),
+            description: Some("adc1"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .load_all_adc_values()
+                            .map_err(|_| sensor_common::Error::UnexpectedEOF)?[1]
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x02],
+            type_hint: Some(Type::F32),
+            description: Some("adc2-vcc"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .load_all_adc_values()
+                            .map_err(|_| sensor_common::Error::UnexpectedEOF)?[2]
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x03],
+            type_hint: Some(Type::F32),
+            description: Some("adc3"),
+            complexity: QueryComplexity::low(),
+            read: property_read_fn! {
+                |platform, module: &mut PumpingSystem, write| {
+                    write.write_all(
+                        &module
+                            .load_all_adc_values()
+                            .map_err(|_| sensor_common::Error::UnexpectedEOF)?[3]
+                            .to_be_bytes()
+                    )
+                }
+            },
+            write: None,
+        },
+    ];
 
     fn module_id(&self) -> ModuleId {
         ModuleId {
@@ -221,12 +366,7 @@ impl Module for PumpingSystem {
     fn update(&mut self, platform: &mut Platform) {
         let timestamp_ms = platform.system.info.uptime_ms();
 
-        if let Ok([fill, _battery, _vcc5v, _pressure]) =
-            self.load_all_adc_values()
-                .map(|[fill, battery, vcc5v, pressure]| {
-                    [fill * 2_f32, battery, vcc5v * 2_f32, pressure * 2_f32]
-                })
-        {
+        if let Ok([fill, _battery, _vcc5v, _pressure]) = self.load_all_adc_values() {
             self.pump_state.update(timestamp_ms, fill);
             self.update_warning_and_alert(timestamp_ms);
 
