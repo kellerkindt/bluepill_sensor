@@ -501,16 +501,46 @@ impl Platform {
                 Ok(Action::SendResponse)
             }
             Request::RetrieveProperty(id, len) => {
-                let mut pid = [0u8; u8::MAX as usize];
-                for i in 0..len {
-                    pid[i as usize] = request_payload.read_u8()?;
-                }
+                const PID_PATH_MAX_DEPTH: usize = 8_usize;
+                let len = PID_PATH_MAX_DEPTH.min(usize::from(len));
+                let buffer = {
+                    let mut buffer = [0u8; PID_PATH_MAX_DEPTH];
+                    for i in 0..len {
+                        buffer[i as usize] = request_payload.read_u8()?;
+                    }
+                    buffer
+                };
+                let pid_path = &buffer[..len];
 
-                if pid.len() > 0 {
-                    if pid[0] != ComponentRoot::Module as u8 {
+                match pid_path {
+                    [component, module_group, module_id, module_ext, prop_id @ ..]
+                        if *component == ComponentRoot::Module as u8
+                            && *module_group == module.module_id().group
+                            && *module_id == module.module_id().id
+                            && *module_ext == module.module_id().ext =>
+                    {
+                        for property in M::PROPERTIES {
+                            if property.id == prop_id {
+                                drop(buffer);
+                                if let Some(read_fn) = property.read.as_ref() {
+                                    Response::Ok(
+                                        id,
+                                        Format::ValueOnly(
+                                            property.type_hint.unwrap_or(Type::DynBytes),
+                                        ),
+                                    )
+                                    .write(response_writer)?;
+                                    read_fn(self, &mut *module, response_writer)?;
+                                    return Ok(Action::SendResponse);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
                         for property in PROPERTIES {
-                            if property.id.len() as u8 == len && property.id == &pid[..len as usize]
-                            {
+                            if property.id == pid_path {
                                 if let Some(read_fn) = property.read.as_ref() {
                                     Response::Ok(
                                         id,
@@ -526,34 +556,9 @@ impl Platform {
                                 }
                             }
                         }
-                    } else if pid.len() > 4 {
-                        let module_id = module.module_id();
-                        if &pid[1..=3] == &[module_id.group, module_id.id, module_id.ext] {
-                            let pid = &pid[4..];
-                            let len = len - 4;
-
-                            for property in M::PROPERTIES {
-                                if property.id.len() as u8 == len
-                                    && property.id == &pid[..len as usize]
-                                {
-                                    if let Some(read_fn) = property.read.as_ref() {
-                                        Response::Ok(
-                                            id,
-                                            Format::ValueOnly(
-                                                property.type_hint.unwrap_or(Type::DynBytes),
-                                            ),
-                                        )
-                                        .write(response_writer)?;
-                                        read_fn(self, &mut *module, response_writer)?;
-                                        return Ok(Action::SendResponse);
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
+
                 Response::NotAvailable(id).write(response_writer)?;
                 Ok(Action::SendResponse)
             }
