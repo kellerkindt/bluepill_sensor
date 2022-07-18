@@ -399,127 +399,15 @@ impl Module for PumpingSystem {
 }
 
 impl RequestHandler for PumpingSystem {
+    #[inline]
     fn try_handle_request(
         &mut self,
-        platform: &mut Platform,
-        request: Request,
+        _platform: &mut Platform,
+        _request: Request,
         _request_payload: &mut impl Read,
-        response_writer: &mut impl Write,
+        _response_writer: &mut impl Write,
     ) -> Result<Action, HandleError> {
-        match request {
-            Request::ReadSpecified(id, Bus::Custom(c)) if c <= 3 => {
-                let mut adc =
-                    ads1x1x::Ads1x1x::new_ads1115(MutRef(&mut self.i2c), SlaveAddr::new_gnd());
-                if let Ok(value) = adc
-                    .set_full_scale_range(FullScaleRange::Within4_096V)
-                    .and_then(|_| match c {
-                        0 => block!(adc.read(&mut ads1x1x::channel::SingleA0)),
-                        1 => block!(adc.read(&mut ads1x1x::channel::SingleA1)),
-                        2 => block!(adc.read(&mut ads1x1x::channel::SingleA2)),
-                        3 => block!(adc.read(&mut ads1x1x::channel::SingleA3)),
-                        _ => unreachable!(),
-                    })
-                {
-                    let mut bytes = [0u8; 4];
-                    NetworkEndian::write_f32(&mut bytes, value as f32 * 0.125_f32 / 1024_f32);
-                    Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                    response_writer.write_all(&bytes[..])?;
-                } else {
-                    Response::NotAvailable(id).write(response_writer)?;
-                }
-                Ok(Action::SendResponse)
-            }
-            /*
-            Request::ReadSpecified(id, Bus::Custom(x)) if x >= 100 && x <= 108 => {
-                let mut pcf = pcf857x::Pcf8574a::new(
-                    MutRef(&mut self.i2c),
-                    pcf857x::SlaveAddr::Alternative(false, false, false),
-                );
-                let result = if self.state {
-                    pcf.set(0x00)
-                } else {
-                    pcf.set(0xFF)
-                };
-                self.state = !self.state;
-                if result.is_ok() {
-                    Response::Ok(id, Format::Empty).write(response_writer)?;
-                } else {
-                    Response::NotAvailable(id).write(response_writer)?;
-                }
-                Ok(Action::SendResponse)
-            }*/
-            Request::ReadSpecified(id, Bus::Custom(200)) => {
-                use core::fmt::Write;
-                let mut buffer = ArrayString::<[u8; 129]>::new();
-                if write!(&mut buffer, "{:?}", self.pump_state).is_ok() {
-                    let bytes = buffer.as_bytes();
-                    Response::Ok(id, Format::ValueOnly(Type::String(bytes.len() as u8)))
-                        .write(response_writer)?;
-                    response_writer.write_all(bytes)?;
-                } else {
-                    Response::NotAvailable(id).write(response_writer)?;
-                }
-                Ok(Action::SendResponse)
-            }
-            Request::ReadSpecified(id, Bus::Custom(201)) => {
-                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                let timestamp_ms = platform.system.info.uptime_ms();
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(
-                    &mut buffer[..],
-                    match self.pump_state_timestamp {
-                        OnOffTimestamp::Off(time) => timestamp_ms.saturating_sub(time) as f32,
-                        OnOffTimestamp::On(time) => {
-                            timestamp_ms.saturating_sub(time) as f32 * -1_f32
-                        }
-                    },
-                );
-                response_writer.write_all(&buffer[..])?;
-                Ok(Action::SendResponse)
-            }
-            Request::ReadSpecified(id, Bus::Custom(202)) => {
-                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                let timestamp_ms = platform.system.info.uptime_ms();
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(
-                    &mut buffer[..],
-                    self.alert_active_since_timestamp_ms
-                        .map(|t| timestamp_ms.saturating_sub(t))
-                        .unwrap_or(0) as f32,
-                );
-                response_writer.write_all(&buffer[..])?;
-                Ok(Action::SendResponse)
-            }
-            Request::ReadSpecified(id, Bus::Custom(203)) => {
-                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                let timestamp_ms = platform.system.info.uptime_ms();
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(
-                    &mut buffer[..],
-                    self.warn_since_timestamp_ms
-                        .map(|t| timestamp_ms.saturating_sub(t))
-                        .unwrap_or(0) as f32,
-                );
-                response_writer.write_all(&buffer[..])?;
-                Ok(Action::SendResponse)
-            }
-            Request::ReadSpecified(id, Bus::Custom(204)) => {
-                Response::Ok(id, Format::ValueOnly(Type::F32)).write(response_writer)?;
-                let timestamp_ms = platform.system.info.uptime_ms();
-                let mut buffer = [0u8; 4];
-                NetworkEndian::write_f32(
-                    &mut buffer[..],
-                    self.warn_since_timestamp_ms
-                        .filter(|t| {
-                            timestamp_ms.saturating_sub(*t) <= IRREGULAR_HIGH_PUMP_BURSTS_WINDOW_MS
-                        })
-                        .unwrap_or(0) as f32,
-                );
-                response_writer.write_all(&buffer[..])?;
-                Ok(Action::SendResponse)
-            }
-            _ => Ok(Action::HandleRequest(request)),
-        }
+        Ok(Action::HandleRequest(request))
     }
 }
 
