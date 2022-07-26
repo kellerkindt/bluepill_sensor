@@ -16,6 +16,12 @@ pub mod env;
 #[cfg(feature = "module-env")]
 pub use env::EnvironmentalModule as FeaturedModule;
 
+#[cfg(feature = "module-solax")]
+pub mod solax;
+
+#[cfg(feature = "module-solax")]
+pub use solax::SolaxModbusModule as FeaturedModule;
+
 #[cfg(not(feature = "module-specified"))]
 pub mod nop;
 

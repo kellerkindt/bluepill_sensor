@@ -37,7 +37,7 @@ bitflags = "1.2.1"
 ads1x1x = { version = "0.2.1", optional = true }
 pcf857x = { version = "0.3.0", optional = true }
 arrayvec = { version = "0.5.1", optional = true, default-features = false, features = ["array-sizes-129-255"] }
-embedded-nal = "0.4.0"
+embedded-nal = "0.6.0"
 lm75 = { version = "0.1.2", optional = true }
 
 [dependencies.stm32f1xx-hal]
@@ -56,8 +56,8 @@ path = "../w5500"
 [dependencies.onewire]
 path = "../onewire"
 
-[dependencies.pcd8544]
-path = "../pcd8544"
+#[dependencies.pcd8544]
+#path = "../pcd8544"
 
 [dependencies.sensor_common]
 path = "../sensor_common"
@@ -71,6 +71,7 @@ default = ["sntp"]
 module-em = ["module-specified"]
 module-env = ["module-specified"]
 module-ps = ["module-specified", "ads1x1x", "pcf857x", "arrayvec"]
+module-solax = ["module-specified"]
 module-specified = []
 board-rev-specified = []
 board-rev-1 = ["board-rev-specified"]

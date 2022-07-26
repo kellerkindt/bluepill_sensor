@@ -14,6 +14,9 @@ use panic_persist as _;
 extern crate nb;
 
 #[macro_use]
+mod nb_ext;
+
+#[macro_use]
 mod props;
 
 // mod am2302;
