@@ -334,6 +334,7 @@ impl Discovered {
             return Err(DiscoverError::InvalidFunctionCode);
         }
 
+        // TODO rly? 0x06?
         if 0x06 != data[0] {
             return Err(DiscoverError::InvalidAddressConfirmation);
         }
@@ -376,6 +377,7 @@ impl Discovered {
             return Err(QueryError::InvalidControlCode);
         }
 
+        // TODO or 0x82?
         if 0x82 != response.function_code() {
             return Err(QueryError::InvalidFunctionCode);
         }
