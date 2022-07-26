@@ -1,5 +1,5 @@
-use crate::module::solax::bus::SolaxMessage;
 use crate::module::solax::data::{LiveData, LIVE_DATA_LEN};
+use crate::module::solax::msg::SolaxMessage;
 use crate::module::{Module, ModuleBuilder, RequestHandler};
 use crate::module::{ModulePeripherals, PlatformConstraints};
 use crate::platform::{Action, DeviceInformation, HandleError, Platform};
@@ -14,8 +14,9 @@ use stm32f1xx_hal::serial;
 use stm32f1xx_hal::serial::{Config, Serial};
 use stm32f1xx_hal::time::U32Ext;
 
-mod bus;
 mod data;
+#[allow(unused)]
+mod msg;
 
 pub type USART = Serial<USART1, (PA9<Alternate<PushPull>>, PA10<Input<Floating>>)>;
 
@@ -169,7 +170,7 @@ impl<'a> Context<'a> {
 
     pub fn send_message(
         &mut self,
-        mut message: SolaxMessage,
+        message: SolaxMessage,
         payload: &[u8],
     ) -> Result<(), TransmissionError> {
         let message = message
@@ -201,8 +202,18 @@ impl<'a> Context<'a> {
     }
 
     #[inline]
-    pub fn receive_message(&mut self) -> Result<SolaxMessage, TransmissionError> {
-        self.receive_binary().map(SolaxMessage::from)
+    pub fn receive_message<const LEN: usize>(
+        &mut self,
+    ) -> Result<(SolaxMessage, [u8; LEN]), TransmissionError> {
+        let message = self.receive_binary().map(SolaxMessage::from)?;
+        let payload = self.receive_binary::<LEN>()?;
+        let crc = self.receive_binary::<2>()?;
+
+        if crc != message.checksum_u16(&payload).to_be_bytes() {
+            return Err(TransmissionError::InvalidChecksum);
+        } else {
+            Ok((message, payload))
+        }
     }
 
     pub fn receive_binary<const LEN: usize>(&mut self) -> Result<[u8; LEN], TransmissionError> {
@@ -229,10 +240,11 @@ impl<'a> Context<'a> {
 pub enum TransmissionError {
     Timeout,
     Serial(serial::Error),
+    InvalidChecksum,
 }
 
 pub struct Discovered {
-    serial: [u8; 14],
+    // serial: [u8; 14],
     assigned_address: u8,
     when: u64,
 }
@@ -243,19 +255,22 @@ pub enum DiscoverError {
     InvalidControlCode,
     InvalidFunctionCode,
     UnexpectedDataLength(u8),
-    InvalidChecksum,
+    InvalidAddressConfirmation,
 }
 
 impl DiscoverError {
     pub fn as_str(&self) -> &'static str {
         match self {
             DiscoverError::TransmissionError(TransmissionError::Timeout) => "transmission-timeout",
+            DiscoverError::TransmissionError(TransmissionError::InvalidChecksum) => {
+                "transmission-invalid-checksum"
+            }
             DiscoverError::TransmissionError(_) => "transmission-error",
             DiscoverError::InvalidBroadcastAddress => "invalid-broadcast-address",
             DiscoverError::InvalidControlCode => "invalid-control-code",
             DiscoverError::InvalidFunctionCode => "invalid-function-code",
             DiscoverError::UnexpectedDataLength(_) => "unexpected-data-length",
-            DiscoverError::InvalidChecksum => "invalid-checksum",
+            DiscoverError::InvalidAddressConfirmation => "invalid-address-confirmation",
         }
     }
 }
@@ -272,7 +287,7 @@ impl Discovered {
     pub fn try_from(ctx: &mut Context<'_>) -> Result<Discovered, DiscoverError> {
         ctx.send_message(SolaxMessage::DISCOVER_DEVICES, &[])?;
 
-        let response = ctx.receive_message()?;
+        let (response, serial_number) = ctx.receive_message::<14>()?;
 
         // TODO only the first byte?
         if SolaxMessage::BROADCAST_ADDRESS[0] != response.destination()[0] {
@@ -289,13 +304,6 @@ impl Discovered {
 
         if 14 != response.data_length() {
             return Err(DiscoverError::UnexpectedDataLength(response.data_length()));
-        }
-
-        let serial_number = ctx.receive_binary::<14>()?;
-
-        // TODO big endian?
-        if ctx.receive_binary::<2>()? != response.checksum_u16(&serial_number).to_be_bytes() {
-            return Err(DiscoverError::InvalidChecksum);
         }
 
         let inverter_address_assignment = SolaxMessage::new()
@@ -316,11 +324,22 @@ impl Discovered {
 
         ctx.send_message(inverter_address_assignment, &payload)?;
 
-        let confirmation = ctx.receive_message()?;
-        let data = ctx.receive_binary::<1>()?;
+        let (confirmation, data) = ctx.receive_message::<1>()?;
+
+        if 0x10 != confirmation.control_code() {
+            return Err(DiscoverError::InvalidControlCode);
+        }
+
+        if 0x81 != confirmation.function_code() {
+            return Err(DiscoverError::InvalidFunctionCode);
+        }
+
+        if 0x06 != data[0] {
+            return Err(DiscoverError::InvalidAddressConfirmation);
+        }
 
         Ok(Discovered {
-            serial: serial_number,
+            // serial: serial_number,
             assigned_address: inverter_address,
             when: ctx.info.uptime_ms(),
         })
@@ -347,18 +366,10 @@ impl Discovered {
 
         ctx.send_message(query_message, &[])?;
 
-        let response = ctx.receive_message()?;
+        let (response, live_data) = ctx.receive_message()?;
 
         if usize::from(response.data_length()) != LIVE_DATA_LEN {
             return Err(QueryError::InvalidLiveDataLength(response.data_length()));
-        }
-
-        let live_data = ctx.receive_binary()?;
-        let crc = ctx.receive_binary::<2>()?;
-
-        // TODO big endian?
-        if response.checksum_u16(&live_data) != u16::from_be_bytes(crc) {
-            return Err(QueryError::InvalidCrc);
         }
 
         if 0x11 != response.control_code() {
@@ -376,7 +387,6 @@ impl Discovered {
 pub enum QueryError {
     TransmissionError(TransmissionError),
     InvalidLiveDataLength(u8),
-    InvalidCrc,
     InvalidControlCode,
     InvalidFunctionCode,
 }
@@ -385,9 +395,11 @@ impl QueryError {
     pub fn as_str(&self) -> &'static str {
         match self {
             QueryError::TransmissionError(TransmissionError::Timeout) => "transmission-timeout",
+            QueryError::TransmissionError(TransmissionError::InvalidChecksum) => {
+                "transmission-invalid-checksum"
+            }
             QueryError::TransmissionError(_) => "transmission-timeout",
             QueryError::InvalidLiveDataLength(_) => "invalid-live-data-len",
-            QueryError::InvalidCrc => "invalid-crc",
             QueryError::InvalidControlCode => "invalid-control-code",
             QueryError::InvalidFunctionCode => "invalid-function-code",
         }
