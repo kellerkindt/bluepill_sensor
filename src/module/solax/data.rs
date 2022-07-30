@@ -1,5 +1,6 @@
 pub const LIVE_DATA_LEN: usize = 52;
 
+#[derive(Copy, Clone)]
 pub struct LiveData([u8; LIVE_DATA_LEN]);
 
 impl LiveData {

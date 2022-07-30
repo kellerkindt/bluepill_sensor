@@ -124,22 +124,35 @@ impl ModuleBuilder<SolaxModbusModule> for SolaxModbusModuleBuilder {
                 &mut constraints.apb2,
             ),
             discovered: None,
+            cache: LiveDataCache::Empty,
             error: None,
         }
     }
 }
 
+pub enum LiveDataCache {
+    Empty,
+    Present { from_when: u64, live_data: LiveData },
+}
+
 pub struct SolaxModbusModule {
     usart: USART,
     discovered: Option<Discovered>,
+    cache: LiveDataCache,
     error: Option<&'static str>,
 }
 
 impl SolaxModbusModule {
+    const MAX_AGE_LIVE_DATA_MS: u64 = 1_250;
+
     pub fn retrieve_live_data(
         &mut self,
         info: &DeviceInformation,
     ) -> Result<LiveData, sensor_common::Error> {
+        if let Some(live_data) = self.live_data_cached(info) {
+            return Ok(live_data.clone());
+        }
+
         let mut context = Context::from(&mut self.usart, info);
         let discovered = match self
             .discovered
@@ -161,7 +174,7 @@ impl SolaxModbusModule {
         };
 
         let mut context = Context::from(&mut self.usart, info);
-        let data = match discovered.query_live_data(&mut context) {
+        let live_data = match discovered.query_live_data(&mut context) {
             Ok(live_data) => live_data,
             Err(e) => {
                 self.discovered = None;
@@ -170,7 +183,25 @@ impl SolaxModbusModule {
             }
         };
 
-        Ok(data)
+        self.cache = LiveDataCache::Present {
+            from_when: info.uptime_ms(),
+            live_data: live_data.clone(),
+        };
+
+        Ok(live_data)
+    }
+
+    fn live_data_cached(&self, info: &DeviceInformation) -> Option<&LiveData> {
+        if let LiveDataCache::Present {
+            from_when,
+            live_data,
+        } = &self.cache
+        {
+            if *from_when + Self::MAX_AGE_LIVE_DATA_MS > info.uptime_ms() {
+                return Some(live_data);
+            }
+        }
+        None
     }
 }
 
