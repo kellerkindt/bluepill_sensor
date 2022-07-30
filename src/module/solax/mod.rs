@@ -143,7 +143,7 @@ pub struct SolaxModbusModule {
 }
 
 impl SolaxModbusModule {
-    const MAX_AGE_LIVE_DATA_MS: u64 = 1_250;
+    const MAX_AGE_LIVE_DATA_MS: u64 = 750;
 
     pub fn retrieve_live_data(
         &mut self,
