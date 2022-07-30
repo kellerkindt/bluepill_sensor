@@ -11,9 +11,86 @@ use stm32f1xx_hal::gpio::gpioa::{PA10, PA9};
 use stm32f1xx_hal::gpio::{Alternate, Floating, Input, PushPull};
 use stm32f1xx_hal::pac::USART1;
 use stm32f1xx_hal::serial;
-use stm32f1xx_hal::serial::{Config, Serial};
+use stm32f1xx_hal::serial::{Config, Serial, StopBits};
 use stm32f1xx_hal::time::U32Ext;
 
+macro_rules! getter_setter {
+    ($getter:ident, $setter:ident, $with:ident, $offset:ident = $offset_value:expr, $len:ident = 1) => {
+        const $offset: usize = $offset_value;
+        const $len: usize = 1;
+
+        #[inline]
+        pub const fn $getter(&self) -> u8 {
+            self.0[Self::$offset]
+        }
+
+        #[inline]
+        pub fn $setter(&mut self, $getter: u8) {
+            self.0[Self::$offset] = $getter;
+        }
+
+        #[inline]
+        pub const fn $with(mut self, $getter: u8) -> Self {
+            self.0[Self::$offset] = $getter;
+            self
+        }
+    };
+    ($getter:ident, $setter:ident, $with:ident, $offset:ident = $offset_value:expr, $len:ident = 2) => {
+        const $offset: usize = $offset_value;
+        const $len: usize = 2;
+
+        #[inline]
+        pub const fn $getter(&self) -> [u8; Self::$len] {
+            [self.0[Self::$offset + 0], self.0[Self::$offset + 1]]
+        }
+
+        #[inline]
+        pub fn $setter(&mut self, $getter: [u8; Self::$len]) {
+            self.0[Self::$offset + 0] = $getter[0];
+            self.0[Self::$offset + 1] = $getter[1];
+        }
+
+        #[inline]
+        pub const fn $with(mut self, $getter: [u8; Self::$len]) -> Self {
+            self.0[Self::$offset + 0] = $getter[0];
+            self.0[Self::$offset + 1] = $getter[1];
+            self
+        }
+    };
+    ($getter:ident, $setter:ident, $with:ident, $offset:ident = $offset_value:expr, $len:ident = 4) => {
+        const $offset: usize = $offset_value;
+        const $len: usize = 4;
+
+        #[inline]
+        pub const fn $getter(&self) -> [u8; Self::$len] {
+            [
+                self.0[Self::$offset + 0],
+                self.0[Self::$offset + 1],
+                self.0[Self::$offset + 2],
+                self.0[Self::$offset + 3],
+            ]
+        }
+
+        #[inline]
+        pub fn $setter(&mut self, $getter: [u8; Self::$len]) {
+            self.0[Self::$offset + 0] = $getter[0];
+            self.0[Self::$offset + 1] = $getter[1];
+            self.0[Self::$offset + 2] = $getter[2];
+            self.0[Self::$offset + 3] = $getter[3];
+        }
+
+        #[inline]
+        pub const fn $with(mut self, $getter: [u8; Self::$len]) -> Self {
+            self.0[Self::$offset + 0] = $getter[0];
+            self.0[Self::$offset + 1] = $getter[1];
+            self.0[Self::$offset + 2] = $getter[2];
+            self.0[Self::$offset + 3] = $getter[3];
+            self
+        }
+    };
+}
+
+#[allow(unused)]
 mod data;
 #[allow(unused)]
 mod msg;
@@ -39,7 +116,10 @@ impl ModuleBuilder<SolaxModbusModule> for SolaxModbusModuleBuilder {
                     peripherals.pin_31,
                 ),
                 &mut constraints.afio.mapr,
-                Config::default().baudrate(9600.bps()),
+                Config::default()
+                    .baudrate(9600.bps())
+                    .parity_none()
+                    .stopbits(StopBits::STOP1),
                 constraints.clocks,
                 &mut constraints.apb2,
             ),
@@ -53,6 +133,45 @@ pub struct SolaxModbusModule {
     usart: USART,
     discovered: Option<Discovered>,
     error: Option<&'static str>,
+}
+
+impl SolaxModbusModule {
+    pub fn retrieve_live_data(
+        &mut self,
+        info: &DeviceInformation,
+    ) -> Result<LiveData, sensor_common::Error> {
+        let mut context = Context::from(&mut self.usart, info);
+        let discovered = match self
+            .discovered
+            .as_ref()
+            .filter(|d| d.is_expired(&context.info))
+        {
+            Some(discovered) => &discovered,
+            None => match Discovered::try_from(&mut context) {
+                Ok(discovered) => {
+                    self.error = None;
+                    self.discovered = Some(discovered);
+                    self.discovered.as_ref().unwrap()
+                }
+                Err(e) => {
+                    self.error = Some(e.as_str());
+                    return Err(sensor_common::Error::UnexpectedEOF);
+                }
+            },
+        };
+
+        let mut context = Context::from(&mut self.usart, info);
+        let data = match discovered.query_live_data(&mut context) {
+            Ok(live_data) => live_data,
+            Err(e) => {
+                self.discovered = None;
+                self.error = Some(e.as_str());
+                return Err(sensor_common::Error::UnexpectedEOF);
+            }
+        };
+
+        Ok(data)
+    }
 }
 
 impl Module for SolaxModbusModule {
@@ -79,7 +198,6 @@ impl Module for SolaxModbusModule {
             },
             write: None,
         },
-        /*
         Property {
             id: &[0x00, 0x01],
             type_hint: Some(Type::DynBytes),
@@ -87,41 +205,348 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let mut context = Context::from(&mut module.usart, &platform.system.info);
-                    let discovered = match module.discovered.as_ref().filter(|d| d.is_expired(&context.info)) {
-                        Some(discovered) => &discovered,
-                        None => {
-                            match Discovered::try_from(&mut context) {
-                                Ok(discovered) => {
-                                    module.error = None;
-                                    module.discovered = Some(discovered);
-                                    module.discovered.as_ref().unwrap()
-                                },
-                                Err(e) => {
-                                    module.error = Some(e.as_str());
-                                    return Err(sensor_common::Error::UnexpectedEOF);
-                                }
-                            }
-                        }
-                    };
-
-                    let mut context = Context::from(&mut module.usart, &platform.system.info);
-                    let data = match discovered.query_live_data(&mut context) {
-                        Ok(live_data) => live_data,
-                        Err(e) => {
-                            module.discovered = None;
-                            module.error = Some(e.as_str());
-                            return Err(sensor_common::Error::UnexpectedEOF);
-                        }
-                    };
-
+                    let data = module.retrieve_live_data(&platform.system.info)?;
                     let str = data.as_slice();
                     let len = str.len().min(u8::MAX as usize) as u8;
                     Ok(write.write_u8(len)? + write.write_all(&str[..len as usize])?)
                 }
             },
             write: None,
-        },*/
+        },
+        Property {
+            id: &[0x01, 0x00],
+            type_hint: Some(Type::U16),
+            description: Some("solax-temperature"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let bytes = module.retrieve_live_data(&platform.system.info)?.temperature();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x01],
+            type_hint: Some(Type::F32),
+            description: Some("solax-energy-today"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.energy_today();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x02],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv1-voltage"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_voltage();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x03],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv2-voltage"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_voltage();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x04],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv1-current"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_current();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x05],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv2-current"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_current();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x06],
+            type_hint: Some(Type::F32),
+            description: Some("solax-ac-current"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.ac_current();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x07],
+            type_hint: Some(Type::F32),
+            description: Some("solax-ac-voltage"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.ac_voltage();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x08],
+            type_hint: Some(Type::F32),
+            description: Some("solax-ac-frequency"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.ac_frequency();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 100f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x09],
+            type_hint: Some(Type::F32),
+            description: Some("solax-ac-power"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.ac_power();
+                    let bytes = (u16::from_be_bytes(data) as f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0A],
+            type_hint: None,
+            description: Some("solax-unused"),
+            complexity: QueryComplexity::high(),
+            read: None,
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0B],
+            type_hint: Some(Type::F32),
+            description: Some("solax-energy-total"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.energy_total();
+                    let bytes = (u32::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0C],
+            type_hint: Some(Type::F32),
+            description: Some("solax-runtime-total"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.runtime_total();
+                    let bytes = (u32::from_be_bytes(data) as f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0D],
+            type_hint: Some(Type::U16),
+            description: Some("solax-mode"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let bytes = module.retrieve_live_data(&platform.system.info)?.mode();
+                    let bytes = u16::from_be_bytes(bytes).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0E],
+            type_hint: Some(Type::DynString),
+            description: Some("solax-mode-str"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.mode();
+                    let bytes = match u16::from_be_bytes(data) {
+                        0 => "wait",
+                        1 => "check",
+                        2 => "normal",
+                        3 => "fault",
+                        4 => "permanent fault",
+                        5 => "update",
+                        6 => "EPS check",
+                        7 => "EPS",
+                        8 => "self test",
+                        9 => "idle",
+                        _ => "unknown",
+                    }.as_bytes();
+                    Ok(write.write_u8(bytes.len() as u8)? + write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x0F],
+            type_hint: Some(Type::F32),
+            description: Some("solax-grid-voltage-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.grid_voltage_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x10],
+            type_hint: Some(Type::F32),
+            description: Some("solax-grid-frequency-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.grid_frequency_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x11],
+            type_hint: Some(Type::F32),
+            description: Some("solax-dc-injection-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.dc_injection_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x12],
+            type_hint: Some(Type::F32),
+            description: Some("solax-temperature-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.temperature_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x13],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv1-voltage-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_voltage_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x14],
+            type_hint: Some(Type::F32),
+            description: Some("solax-pv2-voltage-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_voltage_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x15],
+            type_hint: Some(Type::F32),
+            description: Some("solax-gfc-fault"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let data = module.retrieve_live_data(&platform.system.info)?.gfc_fault();
+                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
+                    Ok(write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x16],
+            type_hint: Some(Type::U64),
+            description: Some("solax-error-message"),
+            complexity: QueryComplexity::high(),
+            read: property_read_fn! {
+                |platform, module: &mut SolaxModbusModule, write| {
+                    let bytes = module.retrieve_live_data(&platform.system.info)?.error_message();
+                    Ok(write.write_u8(bytes.len() as u8)? + write.write_all(&bytes)?)
+                }
+            },
+            write: None,
+        },
+        Property {
+            id: &[0x01, 0x17],
+            type_hint: None,
+            description: Some("solax-unknown"),
+            complexity: QueryComplexity::high(),
+            read: None,
+            write: None,
+        },
     ];
 
     fn module_id(&self) -> ModuleId {
@@ -159,7 +584,7 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    const TIMEOUT_MS: u64 = 500;
+    const TIMEOUT_MS: u64 = 850;
 
     pub fn from(usart: &'a mut USART, info: &'a DeviceInformation) -> Self {
         Self {
@@ -262,16 +687,18 @@ pub enum DiscoverError {
 impl DiscoverError {
     pub fn as_str(&self) -> &'static str {
         match self {
-            DiscoverError::TransmissionError(TransmissionError::Timeout) => "transmission-timeout",
-            DiscoverError::TransmissionError(TransmissionError::InvalidChecksum) => {
-                "transmission-invalid-checksum"
+            DiscoverError::TransmissionError(TransmissionError::Timeout) => {
+                "discover-transmission-timeout"
             }
-            DiscoverError::TransmissionError(_) => "transmission-error",
-            DiscoverError::InvalidBroadcastAddress => "invalid-broadcast-address",
-            DiscoverError::InvalidControlCode => "invalid-control-code",
-            DiscoverError::InvalidFunctionCode => "invalid-function-code",
-            DiscoverError::UnexpectedDataLength(_) => "unexpected-data-length",
-            DiscoverError::InvalidAddressConfirmation => "invalid-address-confirmation",
+            DiscoverError::TransmissionError(TransmissionError::InvalidChecksum) => {
+                "discover-transmission-invalid-checksum"
+            }
+            DiscoverError::TransmissionError(_) => "discover-transmission-error",
+            DiscoverError::InvalidBroadcastAddress => "discover-invalid-broadcast-address",
+            DiscoverError::InvalidControlCode => "discover-invalid-control-code",
+            DiscoverError::InvalidFunctionCode => "discover-invalid-function-code",
+            DiscoverError::UnexpectedDataLength(_) => "discover-unexpected-data-length",
+            DiscoverError::InvalidAddressConfirmation => "discover-invalid-address-confirmation",
         }
     }
 }
@@ -290,10 +717,10 @@ impl Discovered {
 
         let (response, serial_number) = ctx.receive_message::<14>()?;
 
-        // TODO only the first byte?
-        if SolaxMessage::BROADCAST_ADDRESS[0] != response.destination()[0] {
-            return Err(DiscoverError::InvalidBroadcastAddress);
-        }
+        // // TODO only the first byte?
+        // if SolaxMessage::BROADCAST_ADDRESS[0] != response.destination()[0] {
+        //     return Err(DiscoverError::InvalidBroadcastAddress);
+        // }
 
         if 0x10 != response.control_code() {
             return Err(DiscoverError::InvalidControlCode);
@@ -397,14 +824,16 @@ pub enum QueryError {
 impl QueryError {
     pub fn as_str(&self) -> &'static str {
         match self {
-            QueryError::TransmissionError(TransmissionError::Timeout) => "transmission-timeout",
-            QueryError::TransmissionError(TransmissionError::InvalidChecksum) => {
-                "transmission-invalid-checksum"
+            QueryError::TransmissionError(TransmissionError::Timeout) => {
+                "query-transmission-timeout"
             }
-            QueryError::TransmissionError(_) => "transmission-timeout",
-            QueryError::InvalidLiveDataLength(_) => "invalid-live-data-len",
-            QueryError::InvalidControlCode => "invalid-control-code",
-            QueryError::InvalidFunctionCode => "invalid-function-code",
+            QueryError::TransmissionError(TransmissionError::InvalidChecksum) => {
+                "query-transmission-invalid-checksum"
+            }
+            QueryError::TransmissionError(_) => "query-transmission-timeout",
+            QueryError::InvalidLiveDataLength(_) => "query-invalid-live-data-len",
+            QueryError::InvalidControlCode => "query-invalid-control-code",
+            QueryError::InvalidFunctionCode => "query-invalid-function-code",
         }
     }
 }

@@ -3,51 +3,6 @@ pub const SOLAX_MESSAGE_LEN: usize = 9;
 #[derive(Default, Copy, Clone)]
 pub struct SolaxMessage([u8; SOLAX_MESSAGE_LEN]);
 
-macro_rules! getter_setter {
-    ($getter:ident, $setter:ident, $with:ident, $offset:ident = $offset_value:expr, $len:ident = 1) => {
-        const $offset: usize = $offset_value;
-        const $len: usize = 1;
-
-        #[inline]
-        pub const fn $getter(&self) -> u8 {
-            self.0[Self::$offset]
-        }
-
-        #[inline]
-        pub fn $setter(&mut self, $getter: u8) {
-            self.0[Self::$offset] = $getter;
-        }
-
-        #[inline]
-        pub const fn $with(mut self, $getter: u8) -> Self {
-            self.0[Self::$offset] = $getter;
-            self
-        }
-    };
-    ($getter:ident, $setter:ident, $with:ident, $offset:ident = $offset_value:expr, $len:ident = 2) => {
-        const $offset: usize = $offset_value;
-        const $len: usize = 2;
-
-        #[inline]
-        pub const fn $getter(&self) -> [u8; Self::$len] {
-            [self.0[Self::$offset + 0], self.0[Self::$offset + 1]]
-        }
-
-        #[inline]
-        pub fn $setter(&mut self, $getter: [u8; Self::$len]) {
-            self.0[Self::$offset + 0] = $getter[0];
-            self.0[Self::$offset + 1] = $getter[1];
-        }
-
-        #[inline]
-        pub const fn $with(mut self, $getter: [u8; Self::$len]) -> Self {
-            self.0[Self::$offset + 0] = $getter[0];
-            self.0[Self::$offset + 1] = $getter[1];
-            self
-        }
-    };
-}
-
 impl SolaxMessage {
     pub const BROADCAST_ADDRESS: [u8; 2] = [0xFF, 0xFF];
     pub const DISCOVER_DEVICES: SolaxMessage = SolaxMessage::new()
