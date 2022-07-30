@@ -79,6 +79,7 @@ impl Module for SolaxModbusModule {
             },
             write: None,
         },
+        /*
         Property {
             id: &[0x00, 0x01],
             type_hint: Some(Type::DynBytes),
@@ -120,7 +121,7 @@ impl Module for SolaxModbusModule {
                 }
             },
             write: None,
-        },
+        },*/
     ];
 
     fn module_id(&self) -> ModuleId {
