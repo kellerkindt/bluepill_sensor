@@ -186,9 +186,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.energy_today();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .energy_today_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -200,9 +203,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_voltage();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv1_voltage_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -214,9 +220,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_voltage();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv2_voltage_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -228,9 +237,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_current();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv1_current_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -242,9 +254,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_current();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv2_current_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -256,9 +271,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.ac_current();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .ac_current_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -270,9 +288,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.ac_voltage();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .ac_voltage_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -284,9 +305,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.ac_frequency();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 100f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .ac_frequency_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -298,9 +322,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.ac_power();
-                    let bytes = (u16::from_be_bytes(data) as f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .ac_power_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -320,9 +347,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.energy_total();
-                    let bytes = (u32::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .energy_total_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -334,9 +364,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.runtime_total();
-                    let bytes = (u32::from_be_bytes(data) as f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .runtime_total_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -362,20 +395,10 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.mode();
-                    let bytes = match u16::from_be_bytes(data) {
-                        0 => "wait",
-                        1 => "check",
-                        2 => "normal",
-                        3 => "fault",
-                        4 => "permanent fault",
-                        5 => "update",
-                        6 => "EPS check",
-                        7 => "EPS",
-                        8 => "self test",
-                        9 => "idle",
-                        _ => "unknown",
-                    }.as_bytes();
+                    let bytes = module
+                        .retrieve_live_data(&platform.system.info)?
+                        .mode_str_or_unknown()
+                        .as_bytes();
                     Ok(write.write_u8(bytes.len() as u8)? + write.write_all(&bytes)?)
                 }
             },
@@ -388,9 +411,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.grid_voltage_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .grid_voltage_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -402,9 +428,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.grid_frequency_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .grid_frequency_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -416,9 +445,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.dc_injection_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .dc_injection_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -430,9 +462,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.temperature_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .temperature_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -444,9 +479,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv1_voltage_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv1_voltage_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -458,9 +496,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.pv2_voltage_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .pv2_voltage_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
@@ -472,9 +513,12 @@ impl Module for SolaxModbusModule {
             complexity: QueryComplexity::high(),
             read: property_read_fn! {
                 |platform, module: &mut SolaxModbusModule, write| {
-                    let data = module.retrieve_live_data(&platform.system.info)?.gfc_fault();
-                    let bytes = (u16::from_be_bytes(data) as f32 / 10f32).to_be_bytes();
-                    Ok(write.write_all(&bytes)?)
+                    Ok(write.write_all(
+                        &module
+                            .retrieve_live_data(&platform.system.info)?
+                            .gfc_fault_f32()
+                            .to_be_bytes()
+                    )?)
                 }
             },
             write: None,
