@@ -22,6 +22,11 @@ impl LiveData {
         TEMPERATURE_LEN = 2
     );
 
+    #[inline]
+    pub fn temperature_f32(&self) -> f32 {
+        u16::from_be_bytes(self.temperature()) as f32
+    }
+
     getter_setter!(
         energy_today,
         set_energy_today,
@@ -29,6 +34,11 @@ impl LiveData {
         ENERGY_TODAY_OFFSET = Self::TEMPERATURE_OFFSET + Self::TEMPERATURE_LEN,
         ENERGY_TODAY_LEN = 2
     );
+
+    #[inline]
+    pub fn energy_today_f32(&self) -> f32 {
+        u16::from_be_bytes(self.energy_today()) as f32 / 10_f32
+    }
 
     getter_setter!(
         pv1_voltage,
@@ -38,6 +48,11 @@ impl LiveData {
         PV1_VOLTAGE_LEN = 2
     );
 
+    #[inline]
+    pub fn pv1_voltage_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv1_voltage()) as f32 / 10_f32
+    }
+
     getter_setter!(
         pv2_voltage,
         set_pv2_voltage,
@@ -45,6 +60,11 @@ impl LiveData {
         PV2_VOLTAGE_OFFSET = Self::PV1_VOLTAGE_OFFSET + Self::PV1_VOLTAGE_LEN,
         PV2_VOLTAGE_LEN = 2
     );
+
+    #[inline]
+    pub fn pv2_voltage_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv2_voltage()) as f32 / 10_f32
+    }
 
     getter_setter!(
         pv1_current,
@@ -54,6 +74,11 @@ impl LiveData {
         PV1_CURRENT_LEN = 2
     );
 
+    #[inline]
+    pub fn pv1_current_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv1_current()) as f32 / 10_f32
+    }
+
     getter_setter!(
         pv2_current,
         set_pv2_current,
@@ -61,6 +86,11 @@ impl LiveData {
         PV2_CURRENT_OFFSET = Self::PV1_CURRENT_OFFSET + Self::PV1_CURRENT_LEN,
         PV2_CURRENT_LEN = 2
     );
+
+    #[inline]
+    pub fn pv2_current_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv2_current()) as f32 / 10_f32
+    }
 
     getter_setter!(
         ac_current,
@@ -70,6 +100,11 @@ impl LiveData {
         AC_CURRENT_LEN = 2
     );
 
+    #[inline]
+    pub fn ac_current_f32(&self) -> f32 {
+        u16::from_be_bytes(self.ac_current()) as f32 / 10_f32
+    }
+
     getter_setter!(
         ac_voltage,
         set_ac_voltage,
@@ -77,6 +112,11 @@ impl LiveData {
         AC_VOLTAGE_OFFSET = Self::AC_CURRENT_OFFSET + Self::AC_CURRENT_LEN,
         AC_VOLTAGE_LEN = 2
     );
+
+    #[inline]
+    pub fn ac_voltage_f32(&self) -> f32 {
+        u16::from_be_bytes(self.ac_voltage()) as f32 / 10_f32
+    }
 
     getter_setter!(
         ac_frequency,
@@ -86,6 +126,11 @@ impl LiveData {
         AC_FREQUENCY_LEN = 2
     );
 
+    #[inline]
+    pub fn ac_frequency_f32(&self) -> f32 {
+        u16::from_be_bytes(self.ac_frequency()) as f32 / 100_f32
+    }
+
     getter_setter!(
         ac_power,
         set_ac_power,
@@ -93,6 +138,11 @@ impl LiveData {
         AC_POWER_OFFSET = Self::AC_FREQUENCY_OFFSET + Self::AC_FREQUENCY_LEN,
         AC_POWER_LEN = 2
     );
+
+    #[inline]
+    pub fn ac_power_f32(&self) -> f32 {
+        u16::from_be_bytes(self.ac_power()) as f32
+    }
 
     getter_setter!(
         unused,
@@ -110,6 +160,11 @@ impl LiveData {
         ENERGY_TOTAL_LEN = 4
     );
 
+    #[inline]
+    pub fn energy_total_f32(&self) -> f32 {
+        u32::from_be_bytes(self.energy_total()) as f32 / 10_f32
+    }
+
     getter_setter!(
         runtime_total,
         set_runtime_total,
@@ -117,6 +172,11 @@ impl LiveData {
         RUNTIME_TOTAL_OFFSET = Self::ENERGY_TOTAL_OFFSET + Self::ENERGY_TOTAL_LEN,
         RUNTIME_TOTAL_LEN = 4
     );
+
+    #[inline]
+    pub fn runtime_total_f32(&self) -> f32 {
+        u32::from_be_bytes(self.runtime_total()) as f32
+    }
 
     getter_setter!(
         mode,
@@ -126,6 +186,28 @@ impl LiveData {
         MODE_LEN = 2
     );
 
+    #[inline]
+    pub fn mode_str(&self) -> Option<&'static str> {
+        Some(match u16::from_be_bytes(self.mode()) {
+            0 => "wait",
+            1 => "check",
+            2 => "normal",
+            3 => "fault",
+            4 => "permanent fault",
+            5 => "update",
+            6 => "EPS check",
+            7 => "EPS",
+            8 => "self test",
+            9 => "idle",
+            _ => return None,
+        })
+    }
+
+    #[inline]
+    pub fn mode_str_or_unknown(&self) -> &'static str {
+        self.mode_str().unwrap_or("unknown")
+    }
+
     getter_setter!(
         grid_voltage_fault,
         set_grid_voltage_fault,
@@ -133,6 +215,11 @@ impl LiveData {
         GRID_VOLTAGE_FAULT_OFFSET = Self::MODE_OFFSET + Self::MODE_LEN,
         GRID_VOLTAGE_FAULT_LEN = 2
     );
+
+    #[inline]
+    pub fn grid_voltage_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.grid_voltage_fault()) as f32 / 10_f32
+    }
 
     getter_setter!(
         grid_frequency_fault,
@@ -143,6 +230,11 @@ impl LiveData {
         GRID_FREQUENCY_FAULT_LEN = 2
     );
 
+    #[inline]
+    pub fn grid_frequency_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.grid_frequency_fault()) as f32 / 10_f32
+    }
+
     getter_setter!(
         dc_injection_fault,
         set_dc_injection_fault,
@@ -152,6 +244,11 @@ impl LiveData {
         DC_INJECTION_FAULT_LEN = 2
     );
 
+    #[inline]
+    pub fn dc_injection_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.dc_injection_fault()) as f32 / 10_f32
+    }
+
     getter_setter!(
         temperature_fault,
         set_temperature_fault,
@@ -159,6 +256,11 @@ impl LiveData {
         TEMPERATURE_FAULT_OFFSET = Self::DC_INJECTION_FAULT_OFFSET + Self::DC_INJECTION_FAULT_LEN,
         TEMPERATURE_FAULT_LEN = 2
     );
+
+    #[inline]
+    pub fn temperature_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.temperature_fault()) as f32 / 10_f32
+    }
 
     getter_setter!(
         pv1_voltage_fault,
@@ -168,6 +270,11 @@ impl LiveData {
         PV1_VOLTAGE_FAULT_LEN = 2
     );
 
+    #[inline]
+    pub fn pv1_voltage_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv1_voltage_fault()) as f32 / 10_f32
+    }
+
     getter_setter!(
         pv2_voltage_fault,
         set_pv2_voltage_fault,
@@ -176,6 +283,11 @@ impl LiveData {
         PV2_VOLTAGE_FAULT_LEN = 2
     );
 
+    #[inline]
+    pub fn pv2_voltage_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.pv2_voltage_fault()) as f32 / 10_f32
+    }
+
     getter_setter!(
         gfc_fault,
         set_gfc_fault,
@@ -183,6 +295,11 @@ impl LiveData {
         GFC_FAULT_OFFSET = Self::PV2_VOLTAGE_FAULT_OFFSET + Self::PV2_VOLTAGE_FAULT_LEN,
         GFC_FAULT_LEN = 2
     );
+
+    #[inline]
+    pub fn gfc_fault_f32(&self) -> f32 {
+        u16::from_be_bytes(self.gfc_fault()) as f32 / 10_f32
+    }
 
     getter_setter!(
         error_message,
