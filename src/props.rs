@@ -143,10 +143,7 @@ pub const PROPERTIES: &'static [Property<Platform, ()>] = &[
         description: Some("platform-version"),
         read: property_read_fn! {
             |platform, write| {
-                let version: &'static [u8] = env!("CARGO_PKG_VERSION").as_bytes();
-                let len = version.len().min(u8::MAX as usize);
-                write.write_u8(len as u8)?;
-                write.write_all(&version[..usize::from(len)])
+                write.write_dyn_string(env!("CARGO_PKG_VERSION"))
             }
         },
         write: None,

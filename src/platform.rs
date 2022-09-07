@@ -20,12 +20,12 @@ use onewire::Sensor as OneWireSensor;
 use onewire::{ds18b20, DeviceSearch};
 use onewire::{Device, OneWire};
 use panic_persist::get_panic_message_bytes;
-use sensor_common::props::{ComponentRoot, PropertyId, PropertyReportV1};
+use sensor_common::props::handling::{ListComponentsResponder, RetrievePropertyResponder};
+use sensor_common::Format;
 use sensor_common::Request;
 use sensor_common::Response;
 use sensor_common::Type;
 use sensor_common::{Bus, Write as SensorWrite};
-use sensor_common::{Format, Read as SensorRead};
 use stm32f1xx_hal::afio::AfioExt;
 use stm32f1xx_hal::flash::FlashExt;
 use stm32f1xx_hal::gpio::gpioa::*;
@@ -292,16 +292,10 @@ impl Platform {
             let available = writer.available();
 
             let (response_size, action, request_id) = {
-                let (request, request_length) = {
-                    let reader = &mut &*whole_request_buffer;
-                    let available = reader.available();
-                    (Request::read(reader)?, available - reader.available())
-                };
+                let (request, request_content_buffer) =
+                    Request::read_and_split(whole_request_buffer)?;
 
                 let id = request.id();
-                let (_request_header_buffer, request_content_buffer) =
-                    whole_request_buffer.split_at_mut(request_length);
-
                 let action =
                     self.try_handle_request(request, &mut &*request_content_buffer, writer, module);
 
@@ -459,108 +453,31 @@ impl Platform {
                 Response::Ok(id, Format::Empty).write(response_writer)?;
                 Ok(Action::SendResponseAndReset)
             }
-            Request::ListComponents(id) | Request::ListComponentsWithReportV1(id) => {
-                Response::Ok(
-                    id,
-                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
-                        Format::ValueOnly(Type::DynListPropertyReportV1)
-                    } else {
-                        Format::AddressOnly(Type::PropertyId)
-                    },
-                )
-                .write(response_writer)?;
-
-                for property in PROPERTIES {
-                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
-                        PropertyReportV1::from(property).write(response_writer)?;
-                    } else {
-                        PropertyId::from_slice(property.id).write(response_writer)?;
-                    }
-                }
-
-                let module_id = module.module_id();
-                for property in M::PROPERTIES {
-                    let prefix_len = 4;
-                    let id_len = property.id.len().min((u8::MAX - prefix_len) as usize) as u8;
-                    let len = prefix_len + id_len;
-
-                    response_writer.write_u8(len)?;
-                    response_writer.write_all(&[
-                        ComponentRoot::Module as u8,
-                        module_id.group,
-                        module_id.id,
-                        module_id.ext,
-                    ])?;
-                    response_writer.write_all(&property.id[..id_len as usize])?;
-
-                    if matches!(request, Request::ListComponentsWithReportV1(_)) {
-                        PropertyReportV1::from(property).write_no_id(response_writer)?;
-                    }
-                }
-
-                Ok(Action::SendResponse)
+            request @ Request::ListComponents(..)
+            | request @ Request::ListComponentsWithReportV1(..) => {
+                ListComponentsResponder::opt_from(&request)
+                    .expect("should be unreachable")
+                    .write(
+                        response_writer,
+                        PROPERTIES,
+                        Some((module.module_id(), M::PROPERTIES)),
+                    )
+                    .map(|_| Action::SendResponse)
+                    .map_err(Into::into)
             }
-            Request::RetrieveProperty(id, len) => {
-                const PID_PATH_MAX_DEPTH: usize = 8_usize;
-                let len = PID_PATH_MAX_DEPTH.min(usize::from(len));
-                let buffer = {
-                    let mut buffer = [0u8; PID_PATH_MAX_DEPTH];
-                    for i in 0..len {
-                        buffer[i as usize] = request_payload.read_u8()?;
-                    }
-                    buffer
-                };
-                let pid_path = &buffer[..len];
-
-                match pid_path {
-                    [component, module_group, module_id, module_ext, prop_id @ ..]
-                        if *component == ComponentRoot::Module as u8
-                            && *module_group == module.module_id().group
-                            && *module_id == module.module_id().id
-                            && *module_ext == module.module_id().ext =>
-                    {
-                        for property in M::PROPERTIES {
-                            if property.id == prop_id {
-                                drop(buffer);
-                                if let Some(read_fn) = property.read.as_ref() {
-                                    Response::Ok(
-                                        id,
-                                        Format::ValueOnly(
-                                            property.type_hint.unwrap_or(Type::DynBytes),
-                                        ),
-                                    )
-                                    .write(response_writer)?;
-                                    read_fn(self, &mut *module, response_writer)?;
-                                    return Ok(Action::SendResponse);
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        for property in PROPERTIES {
-                            if property.id == pid_path {
-                                if let Some(read_fn) = property.read.as_ref() {
-                                    Response::Ok(
-                                        id,
-                                        Format::ValueOnly(
-                                            property.type_hint.unwrap_or(Type::DynBytes),
-                                        ),
-                                    )
-                                    .write(response_writer)?;
-                                    read_fn(self, &mut (), response_writer)?;
-                                    return Ok(Action::SendResponse);
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Response::NotAvailable(id).write(response_writer)?;
-                Ok(Action::SendResponse)
+            request @ Request::RetrieveProperty(..) => {
+                RetrievePropertyResponder::opt_from(&request, request_payload)
+                    .expect("should be unreachable")
+                    .write(
+                        response_writer,
+                        PROPERTIES,
+                        Some((module.module_id(), M::PROPERTIES)),
+                        self,
+                        &mut (),
+                        &mut *module,
+                    )
+                    .map(|_| Action::SendResponse)
+                    .map_err(Into::into)
             }
             Request::RetrieveErrorDump(id) => {
                 if let Some(msg) = &self.error_dump {
