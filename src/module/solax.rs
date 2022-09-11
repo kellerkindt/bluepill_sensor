@@ -1,5 +1,3 @@
-use crate::module::solax::data::{LiveData, LIVE_DATA_LEN};
-use crate::module::solax::msg::SolaxMessage;
 use crate::module::{Module, ModuleBuilder, RequestHandler};
 use crate::module::{ModulePeripherals, PlatformConstraints};
 use crate::platform::{Action, DeviceInformation, HandleError, Platform};
@@ -7,15 +5,14 @@ use core::convert::Infallible;
 use embedded_hal::prelude::*;
 use sensor_common::props::{ModuleId, Property, QueryComplexity};
 use sensor_common::{Read, Request, Type, Write};
+use solax_modbus::data::{LiveData, LIVE_DATA_LEN};
+use solax_modbus::msg::SolaxMessage;
 use stm32f1xx_hal::gpio::gpioa::{PA10, PA9};
 use stm32f1xx_hal::gpio::{Alternate, Floating, Input, PushPull};
 use stm32f1xx_hal::pac::USART1;
 use stm32f1xx_hal::serial;
 use stm32f1xx_hal::serial::{Config, Serial, StopBits};
 use stm32f1xx_hal::time::U32Ext;
-
-use solax_modbus::data;
-use solax_modbus::msg;
 
 pub type USART = Serial<USART1, (PA9<Alternate<PushPull>>, PA10<Input<Floating>>)>;
 
