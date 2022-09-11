@@ -9,6 +9,9 @@ compile_error!("Missing board revision selection (board-rev1, board-rev-2, board
 extern crate nb;
 
 #[macro_use]
+extern crate sensor_common;
+
+#[macro_use]
 pub mod nb_ext;
 
 #[macro_use]

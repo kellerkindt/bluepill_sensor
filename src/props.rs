@@ -7,50 +7,6 @@ use sensor_common::props::{
 };
 use sensor_common::Type;
 
-#[macro_export]
-macro_rules! property_read_fn {
-    (|$platform:ident, $module:ident: &mut $moduleTy:ty, $write:ident| $body:expr) => {{
-        fn read_fn(
-            $platform: &mut Platform,
-            $module: &mut $moduleTy,
-            $write: &mut dyn sensor_common::Write,
-        ) -> Result<usize, sensor_common::Error> {
-            {
-                let _ = &($platform);
-                let _ = &($module);
-                let _ = &($write);
-            };
-            $body
-        }
-        Some(read_fn)
-    }};
-    (|$platform:ident, $write:ident| $body:expr) => {
-        property_read_fn! { |$platform, _t: &mut (), $write| $body }
-    };
-}
-
-#[macro_export]
-macro_rules! property_write_fn {
-    (|$platform:ident, $module:ident: &mut $moduleTy:ty, $read:ident| $body:expr) => {{
-        fn write_fn(
-            $platform: &mut Platform,
-            $module: &mut $moduleTy,
-            $read: &mut dyn sensor_common::Read,
-        ) -> Result<usize, sensor_common::Error> {
-            {
-                let _ = &($platform);
-                let _ = &($module);
-                let _ = &($read);
-            };
-            $body
-        }
-        Some(write_fn)
-    }};
-    (|$platform:ident, $read:ident| $body:expr) => {
-        property_write_fn! { |$platform, _t: &mut (), $read| $body }
-    };
-}
-
 pub const PROPERTIES: &'static [Property<Platform, ()>] = &[
     Property {
         id: &[

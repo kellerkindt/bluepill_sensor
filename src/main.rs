@@ -14,6 +14,9 @@ use panic_persist as _;
 extern crate nb;
 
 #[macro_use]
+extern crate sensor_common;
+
+#[macro_use]
 mod nb_ext;
 
 #[macro_use]
